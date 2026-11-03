@@ -1,6 +1,9 @@
 package services
 
 import (
+	"fmt"
+	"math"
+
 	"elcomware/app/models"
 )
 
@@ -132,4 +135,26 @@ func (s *CurrencyService) GetRegions() []models.MarketRegion {
 		}
 	}
 	return list
+}
+
+func (s *CurrencyService) Convert(amount float64, fromCurrency, toCurrency string) float64 {
+	from, ok1 := s.currencies[fromCurrency]
+	to, ok2 := s.currencies[toCurrency]
+	if !ok1 || !ok2 || from.ExchangeRate == 0 {
+		return amount
+	}
+	usdAmount := amount / from.ExchangeRate
+	converted := usdAmount * to.ExchangeRate
+	return math.Round(converted*100) / 100
+}
+
+func (s *CurrencyService) Format(amount float64, currencyCode string) string {
+	curr, ok := s.currencies[currencyCode]
+	if !ok {
+		return fmt.Sprintf("$%.2f", amount)
+	}
+	if curr.Prefix {
+		return fmt.Sprintf("%s%.2f", curr.Symbol, amount)
+	}
+	return fmt.Sprintf("%.2f %s", amount, curr.Symbol)
 }

@@ -7,7 +7,8 @@ import (
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
 
-	"elcomware/app/dto"
+	"elcomware/app/http/requests"
+	"elcomware/app/models"
 	"elcomware/app/services"
 )
 
@@ -54,20 +55,18 @@ func (a *AuthController) ShowLogin(ctx http.Context) http.Response {
 }
 
 func (a *AuthController) Login(ctx http.Context) http.Response {
-	email := strings.TrimSpace(ctx.Request().Input("email"))
-	password := strings.TrimSpace(ctx.Request().Input("password"))
-
-	if email == "" || password == "" {
-		ctx.Request().Session().Flash("error", "Email and password are required.")
+	var req requests.LoginRequest
+	errors, err := ctx.Request().ValidateRequest(&req)
+	if err != nil || errors != nil {
+		errorMsg := "Valid email and password are required."
+		if errors != nil {
+			errorMsg = errors.One()
+		}
+		ctx.Request().Session().Flash("error", errorMsg)
 		return ctx.Response().Redirect(http.StatusFound, "/login")
 	}
 
-	input := dto.LoginInput{
-		Email:    email,
-		Password: password,
-	}
-
-	user, err := a.authService.Login(input)
+	user, err := a.authService.Authenticate(req.Email, req.Password)
 	if err != nil {
 		ctx.Request().Session().Flash("error", err.Error())
 		return ctx.Response().Redirect(http.StatusFound, "/login")
@@ -76,10 +75,10 @@ func (a *AuthController) Login(ctx http.Context) http.Response {
 	ctx.Request().Session().Put("user_id", user.ID)
 	ctx.Request().Session().Put("user_email", user.Email)
 	ctx.Request().Session().Put("user_name", user.Name)
-	ctx.Request().Session().Put("user_role", user.Role)
+	ctx.Request().Session().Put("user_role", string(user.Role))
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Welcome back, %s!", user.Name))
 
-	if user.Role == "admin" || user.Role == "merchant" {
+	if user.Role == models.RoleAdmin || user.Role == models.RoleMerchant {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
 	return ctx.Response().Redirect(http.StatusFound, "/")
@@ -94,28 +93,42 @@ func (a *AuthController) ShowRegister(ctx http.Context) http.Response {
 }
 
 func (a *AuthController) Register(ctx http.Context) http.Response {
-	name := strings.TrimSpace(ctx.Request().Input("name"))
-	email := strings.TrimSpace(ctx.Request().Input("email"))
-	password := strings.TrimSpace(ctx.Request().Input("password"))
-	companyName := strings.TrimSpace(ctx.Request().Input("company_name"))
-	country := strings.TrimSpace(ctx.Request().Input("country"))
-	accountType := strings.TrimSpace(ctx.Request().Input("account_type")) // "supplier" or "buyer"
-
-	if name == "" || email == "" || password == "" {
-		ctx.Request().Session().Flash("error", "Name, email, and password are required.")
+	var req requests.RegisterRequest
+	errors, err := ctx.Request().ValidateRequest(&req)
+	if err != nil || errors != nil {
+		errorMsg := "Please check your registration details."
+		if errors != nil {
+			errorMsg = errors.One()
+		}
+		ctx.Request().Session().Flash("error", errorMsg)
 		return ctx.Response().Redirect(http.StatusFound, "/register")
 	}
 
-	input := dto.RegisterInput{
-		Name:        name,
-		Email:       email,
-		Password:    password,
-		CompanyName: companyName,
-		Country:     country,
+	role := models.RoleBuyer
+	if req.AccountType == "supplier" {
+		role = models.RoleMerchant
+	}
+
+	accountType := strings.TrimSpace(req.AccountType)
+	if accountType == "" {
+		if role == models.RoleMerchant {
+			accountType = "supplier"
+		} else {
+			accountType = "individual"
+		}
+	}
+
+	user := &models.User{
+		Name:        req.Name,
+		Email:       req.Email,
+		Password:    req.Password,
+		Role:        role,
+		CompanyName: req.CompanyName,
+		Country:     req.Country,
 		AccountType: accountType,
 	}
 
-	created, err := a.authService.Register(input)
+	created, err := a.authService.Register(user)
 	if err != nil {
 		ctx.Request().Session().Flash("error", err.Error())
 		return ctx.Response().Redirect(http.StatusFound, "/register")
@@ -124,10 +137,10 @@ func (a *AuthController) Register(ctx http.Context) http.Response {
 	ctx.Request().Session().Put("user_id", created.ID)
 	ctx.Request().Session().Put("user_email", created.Email)
 	ctx.Request().Session().Put("user_name", created.Name)
-	ctx.Request().Session().Put("user_role", created.Role)
+	ctx.Request().Session().Put("user_role", string(created.Role))
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise account created! Welcome to Soko, %s.", created.Name))
 
-	if created.Role == "merchant" || created.Role == "admin" {
+	if created.Role == models.RoleMerchant || created.Role == models.RoleAdmin {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
 	return ctx.Response().Redirect(http.StatusFound, "/")

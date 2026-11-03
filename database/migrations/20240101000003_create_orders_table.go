@@ -70,3 +70,4 @@ func (r *M20240101000003CreateOrdersTable) Down() error {
 	}
 	return facades.Schema().DropIfExists("orders")
 }
+

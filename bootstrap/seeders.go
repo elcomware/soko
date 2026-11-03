@@ -15,3 +15,4 @@ func Seeders() []contractsseeder.Seeder {
 		&seeders.OfferSeeder{},
 	}
 }
+

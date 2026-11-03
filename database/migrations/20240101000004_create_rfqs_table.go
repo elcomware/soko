@@ -71,3 +71,4 @@ func (r *M20240101000004CreateRfqsTable) Down() error {
 	}
 	return facades.Schema().DropIfExists("rfqs")
 }
+

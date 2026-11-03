@@ -91,3 +91,4 @@ func (s *UserSeeder) Run() error {
 
 	return nil
 }
+

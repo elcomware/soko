@@ -1,99 +1,225 @@
+# Soko (ソコ) — Next-Gen Multi-Region Hybrid Commerce Platform
+
 <div align="center">
 
-<img src="https://www.goravel.dev/logo.png?v=1.14.x" width="300" alt="Logo">
+```
+  ███████╗ ██████╗ ██╗  ██╗ ██████╗ 
+  ██╔════╝██╔═══██╗██║ ██╔╝██╔═══██╗
+  ███████╗██║   ██║█████╔╝ ██║   ██║
+  ╚════██║██║   ██║██╔═██╗ ██║   ██║
+  ███████║╚██████╔╝██║  ██╗╚██████╔╝
+  ╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ 
+```
 
-[![Doc](https://pkg.go.dev/badge/github.com/goravel/framework)](https://pkg.go.dev/github.com/goravel/framework)
-[![Go](https://img.shields.io/github/go-mod/go-version/goravel/framework)](https://go.dev/)
-[![Release](https://img.shields.io/github/release/goravel/framework.svg)](https://github.com/goravel/framework/releases)
-[![Test](https://github.com/goravel/framework/actions/workflows/test.yml/badge.svg)](https://github.com/goravel/framework/actions)
-[![Report Card](https://goreportcard.com/badge/github.com/goravel/framework)](https://goreportcard.com/report/github.com/goravel/framework)
-[![Codecov](https://codecov.io/gh/goravel/framework/branch/master/graph/badge.svg)](https://codecov.io/gh/goravel/framework)
-![License](https://img.shields.io/github/license/goravel/framework)
+**Enterprise-Grade Multi-Region Commerce Engine**  
+*Unifying the best of **Alibaba** (Wholesale B2B & RFQs), **Amazon** (High-Velocity Retail), **eBay** (Make an Offer & Secondary Condition Brackets), and **Digital Asset Delivery** (Cryptographic License Tokens & Secure Vault Downloads).*
+
+[![Framework: Goravel v1.18](https://img.shields.io/badge/framework-goravel_v1.18-2496ED.svg?style=flat-square&logo=go)](https://www.goravel.dev)
+[![Frontend: Inertia.js + Vue 3](https://img.shields.io/badge/frontend-Inertia_Vue_3-42b883.svg?style=flat-square&logo=vuedotjs)](https://inertiajs.com)
+[![Styling: Tailwind CSS v4](https://img.shields.io/badge/css-Tailwind_CSS_v4-06B6D4.svg?style=flat-square&logo=tailwindcss)](https://tailwindcss.com)
+[![Database: Pure-Go SQLite](https://img.shields.io/badge/database-SQLite_pure--go-003B57.svg?style=flat-square&logo=sqlite)](https://github.com/goravel/sqlite)
+[![Trade Assurance](https://img.shields.io/badge/escrow-Trade_Assurance_Guaranteed-059669.svg?style=flat-square)]()
 
 </div>
 
-English | [中文](./README_zh.md)
+---
 
-## About Goravel
+## 🌟 Executive Summary
 
-Goravel is a full-featured, scalable web application framework that provides a starting scaffold to help Gophers quickly build their applications.
+**Soko** is engineered to eliminate the boundaries between B2B industrial procurement, direct-to-consumer retail, open peer-to-peer price negotiation, and automated digital goods licensing. Built on the high-performance **Goravel Framework** (Go) with **Inertia.js (Vue 3)** and **Tailwind CSS v4**, Soko provides a unified marketplace tailored to any regional market or trade corridor worldwide.
 
-The framework style is consistent with [Laravel](https://laravel.com/), so PHP developers don’t need to learn a new framework and can still enjoy playing around with Golang, in tribute to Laravel!
+### Four Integrated Commerce Formats
 
-We welcome stars, PRs, and issues!
+```mermaid
+flowchart LR
+    A["Soko Core Engine"] --> B["B2B Wholesale (Alibaba-style)"]
+    A --> C["Direct Retail (Amazon-style)"]
+    A --> D["Make an Offer (eBay-style)"]
+    A --> E["Automated Digital Goods"]
 
-## Documentation
+    B --> B1["Tiered Volume Brackets<br/>Minimum Order Quantities<br/>Global RFQ Bidding Board"]
+    C --> C1["Buy Now 1-Click<br/>DDP Air Express Logistics<br/>Prime Dispatch Tracking"]
+    D --> D1["Real-time Price Offers<br/>Open Box & Refurbished<br/>Supplier Counter-Bids"]
+    E --> E1["Cryptographic License Vault<br/>Instant Binary Token Gen<br/>Automated CDN Downloads"]
+```
 
-Online documentation [https://www.goravel.dev](https://www.goravel.dev)
+1. **Alibaba Format (`wholesale`)**: Minimum Order Quantities (MOQ), tiered volume discount brackets (e.g., 1-4 units, 5-19 units, 20+ units), custom RFQs, and up to $1,000,000 Trade Assurance escrow protection.
+2. **Amazon Format (`retail`)**: High-conversion instant checkout, verified supplier ratings, guaranteed 2-day delivery routes, and transparent tax and shipping breakdowns.
+3. **eBay Format (`make_offer`)**: Buyer price proposals, supplier counter-offers, and secondary condition grading (`new`, `refurbished`, `open_box`).
+4. **Digital Asset Vault (`digital`)**: Instant cryptographic software license generation (`SOKO-XXXX-YYYY`), perpetual licenses for cloud software, CAD blueprints, and pre-quantized machine learning weights.
 
-Example [https://github.com/goravel/example](https://github.com/goravel/example)
+---
 
-> To optimize the documentation, please submit a PR to the documentation
-> repository [https://github.com/goravel/docs](https://github.com/goravel/docs)
+## 🌍 Regional Market & Multi-Currency Engine
 
-## Main Features
+Soko features native multi-currency clearing and localized trade corridor settlement across **10 global currencies** and **7 regional hubs**:
 
-| Module Name | Description |
-|-------------|-------------|
-| [Artisan Console](https://www.goravel.dev/digging-deeper/artisan-console.html) | CLI command-line interface for application management and automation |
-| [Authentication](https://www.goravel.dev/security/authentication.html) | User identity verification with JWT and Session drivers |
-| [Authorization](https://www.goravel.dev/security/authorization.html) | Permission-based access control using policies and gates |
-| [Cache](https://www.goravel.dev/digging-deeper/cache.html) | Store and retrieve data using memory, Redis, or custom drivers |
-| [Carbon](https://www.goravel.dev/digging-deeper/helpers.html) | Helper functions for date and time manipulation |
-| [Config](https://www.goravel.dev/getting-started/configuration.html) | Application configuration management from files and environment |
-| [Crypt](https://www.goravel.dev/security/encryption.html) | Secure data encryption and decryption utilities |
-| [DB](https://www.goravel.dev/database/getting-started.html) | Database query builder |
-| [Event](https://www.goravel.dev/digging-deeper/event.html) | Application event dispatching and listening system |
-| [Factory](https://www.goravel.dev/orm/factories.html) | Generate fake model data for testing purposes |
-| [FileStorage](https://www.goravel.dev/digging-deeper/filesystem.html) | File upload, download, and storage across multiple drivers |
-| [Grpc](https://www.goravel.dev/the-basics/grpc.html) | High-performance gRPC server and client implementation |
-| [Hash](https://www.goravel.dev/security/hashing.html) | Secure password hashing |
-| [Http](https://www.goravel.dev/the-basics/routing.html) | HTTP routing, controllers, and middleware management |
-| [Http Client](https://www.goravel.dev/digging-deeper/http-client.html) | Make HTTP requests to external APIs and services |
-| [Localization](https://www.goravel.dev/digging-deeper/localization.html) | Multi-language translation and locale management |
-| [Logger](https://www.goravel.dev/the-basics/logging.html) | Application logging to files, console, or external services |
-| [Mail](https://www.goravel.dev/digging-deeper/mail.html) | Send emails via SMTP or queue-based delivery |
-| [Mock](https://www.goravel.dev/testing/mock.html) | Create test mocks for facades and dependencies |
-| [Migrate](https://www.goravel.dev/database/migrations.html) | Version control for database schema changes |
-| [Orm](https://www.goravel.dev/orm/getting-started.html) | Elegant Orm implementation for database operations |
-| [Package Development](https://www.goravel.dev/digging-deeper/package-development.html) | Build reusable packages to extend framework functionality |
-| [Process](https://www.goravel.dev/digging-deeper/process.html) | An expressive and elegant API around Go's standard os/exec package |
-| [Queue](https://www.goravel.dev/digging-deeper/queues.html) | Defer time-consuming tasks to background job processing |
-| [Seeder](https://www.goravel.dev/database/seeding.html) | Populate database tables with test or initial data |
-| [Session](https://www.goravel.dev/the-basics/session.html) | Manage user session data across HTTP requests |
-| [Task Scheduling](https://www.goravel.dev/digging-deeper/task-scheduling.html) | Schedule recurring tasks using cron-like expressions |
-| [Testing](https://www.goravel.dev/testing/getting-started.html) | HTTP testing, mocking, and assertion utilities |
-| [Validation](https://www.goravel.dev/the-basics/validation.html) | Validate incoming request data using rules |
-| [View](https://www.goravel.dev/the-basics/views.html) | Template rendering engine for HTML responses |
+| Region Code | Regional Hub | Default Currency | Flag | Supported Local Rails |
+|:---|:---|:---|:---:|:---|
+| `global` | Universal Unified Marketplace | **USD** ($) | 🌐 | Trade Assurance Escrow, Swift Wire, USDC/USDT |
+| `east-africa` | East Africa (EAC Corridor) | **KES** (KSh) | 🇰🇪 | M-Pesa B2B Paybill, EAC Regional RTGS, Bank Wire |
+| `west-africa` | West Africa (ECOWAS Hub) | **NGN** (₦) | 🇳🇬 | NIBSS Instant Payment, Flutterwave Escrow, Wire |
+| `north-america`| North America (US & Canada) | **USD** ($) | 🇺🇸 | Fedwire, ACH Business Transfer, Trade Credit Line |
+| `europe` | European Union & UK | **EUR** (€) | 🇪🇺 | SEPA Instant Credit Transfer, BACS UK, Corporate Card |
+| `asia-pacific` | Asia-Pacific (Shenzhen & HK Hub) | **CNY** (¥) | 🇨🇳 | CIPS Cross-Border RMB, Alipay+ Merchant, T/T |
+| `middle-east` | Middle East (GCC Hub) | **AED** (AED)| 🇦🇪 | UAE Central Bank Aani, SARIE, Trade Escrow |
 
-## Compare With Laravel
+---
 
-[For Detail](https://www.goravel.dev/prologue/compare-with-laravel.html)
+## 🏗️ Clean Enterprise Architecture
 
-## Roadmap
+Soko strictly separates business domains, validation, persistence, and presentation:
 
-[For Detail](https://github.com/goravel/goravel/issues?q=is%3Aissue+is%3Aopen)
+```
+app/
+├── http/
+│   ├── requests/      # Goravel Form Requests (Validation rules & error messages)
+│   │   ├── create_product_request.go
+│   │   ├── checkout_request.go
+│   │   ├── create_rfq_request.go
+│   │   ├── submit_rfq_quote_request.go
+│   │   ├── submit_offer_request.go
+│   │   ├── login_request.go
+│   │   └── register_request.go
+│   ├── controllers/   # Ultra-thin presentation handlers
+│   │   ├── store_controller.go     (Catalog, Detail, Checkout, Offers, RFQs)
+│   │   ├── dashboard_controller.go (KPIs, Catalog CRUD, Quotations)
+│   │   └── auth_controller.go      (Authentication, Registration, Sessions)
+│   └── middleware/    # Auth and Inertia share props pipeline
+├── models/            # Goravel/GORM database models with JSON serialization
+│   ├── product.go     (Formats, conditions, price tiers, JSON hydration)
+│   ├── order.go       (Orders, OrderItems, digital fulfillment tokens)
+│   ├── rfq.go         (Sourcing RFQs and supplier quotes)
+│   ├── offer.go       (eBay-style buyer negotiations)
+│   ├── user.go        (Admins, Merchants/Suppliers, Enterprise Buyers)
+│   └── region.go      (Currencies and regional market definitions)
+├── actions/           # Single-responsibility write operations & transactions
+│   ├── create_product_action.go
+│   ├── delete_product_action.go
+│   ├── execute_checkout_action.go
+│   ├── issue_digital_license_action.go
+│   ├── create_rfq_action.go
+│   ├── submit_rfq_quote_action.go
+│   ├── submit_offer_action.go
+│   ├── authenticate_user_action.go
+│   └── register_user_action.go
+├── queries/           # Read-only database operations & aggregations
+│   ├── product_queries.go
+│   ├── order_queries.go
+│   ├── rfq_queries.go
+│   ├── offer_queries.go
+│   ├── user_queries.go
+│   └── dashboard_queries.go
+└── services/          # Real domain orchestration services
+    ├── catalog_service.go
+    ├── order_service.go
+    ├── rfq_service.go
+    ├── offer_service.go
+    ├── auth_service.go
+    ├── currency_service.go
+    ├── trade_assurance_service.go
+    ├── logistics_service.go
+    └── dashboard_service.go
+```
 
-## Excellent Extend Packages
+---
 
-[For Detail](https://www.goravel.dev/getting-started/packages.html)
+## 🚀 Quick Start Guide
 
-## Contributors
+### Prerequisites
+- **Go 1.23+**
+- **Node.js 18+ & npm**
+- Pure Go SQLite driver is pre-bundled — **no CGO compiler or gcc required**.
 
-This project exists thanks to all the people who contribute, to participate in the contribution, please see [Contribution Guide](https://www.goravel.dev/prologue/contributions.html).
+### 1. Clone & Install Dependencies
 
-## Sponsor
+```bash
+git clone https://github.com/elcomware/soko.git
+cd soko
 
-Better development of the project is inseparable from your support, reward us by [Open Collective](https://opencollective.com/goravel).
+# Install Go modules
+go mod download
 
-<p align="left"><img src="https://www.goravel.dev/reward.png" width="200"></p>
+# Install Frontend dependencies
+npm install
+```
 
-## Group
+### 2. Environment Configuration
 
-Welcome more discussion in Discord.
+```bash
+cp .env.example .env
+```
 
-[https://discord.gg/cFc5csczzS](https://discord.gg/cFc5csczzS)
+Ensure `.env` contains:
+```ini
+APP_NAME=Soko
+APP_ENV=local
+APP_KEY=                    # Generate with: go run . artisan key:generate
+APP_PORT=8000
+APP_URL=http://localhost:8000
 
-## License
+DB_CONNECTION=sqlite
+DB_DATABASE=database/soko.sqlite
+```
 
-The Goravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 3. Database Migrations & Seeds
+
+Run migrations and seed the enterprise dataset (Users, Products, RFQs, Offers):
+
+```bash
+# Run all SQLite migrations
+go run . artisan migrate
+
+# Seed realistic enterprise data
+go run . artisan db:seed
+```
+
+Or run fresh:
+```bash
+go run . artisan migrate:fresh
+go run . artisan db:seed
+```
+
+### 4. Build Frontend & Launch
+
+```bash
+# Build production frontend assets (Tailwind v4 + Vite)
+npm run build
+
+# Start the Soko HTTP server
+go run .
+```
+
+Open your browser at **`http://localhost:8000`**.
+
+---
+
+## 🔑 Demo Credentials
+
+| Role | Email | Password | Access Scope |
+|:---|:---|:---|:---|
+| **Platform Administrator** | `admin@soko.global` | `secret123` | Full executive dashboard, user management, global oversight |
+| **Enterprise Supplier (East Africa)** | `supplier.ea@soko.global` | `secret123` | Product catalog CRUD, RFQ bidding board, offer reviews |
+| **Merchant Supplier (Shenzhen)** | `merchant.cn@soko.global` | `secret123` | OEM export catalog, shipping configurations |
+| **Enterprise Procurement Buyer** | `buyer@soko.global` | `secret123` | RFQ submissions, instant checkout, digital license vault |
+
+---
+
+## 🛠️ Artisan CLI Utilities
+
+Soko comes with the full Goravel Artisan console:
+
+```bash
+go run . artisan list              # List all available artisan commands
+go run . artisan db:show           # Display database connection and table sizes
+go run . artisan migrate:status    # Check status of each migration
+go run . artisan make:model <Name> # Scaffold a new domain model
+go run . artisan make:request <Req># Scaffold a new Form Request
+go run . artisan route:list        # Show all registered routes
+```
+
+---
+
+## 📄 License
+
+The Soko platform is open-source software licensed under the [MIT License](LICENSE).

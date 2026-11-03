@@ -31,3 +31,4 @@ func (s *DatabaseSeeder) Run() error {
 
 	return nil
 }
+

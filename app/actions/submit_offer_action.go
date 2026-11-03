@@ -4,49 +4,66 @@ import (
 	"fmt"
 	"time"
 
-	"elcomware/app/dto"
 	"elcomware/app/facades"
-	"elcomware/app/mappers"
+	"elcomware/app/http/requests"
 	"elcomware/app/models"
 )
 
-type SubmitOfferAction struct {
-	offerMapper *mappers.OfferMapper
-}
+type SubmitOfferAction struct{}
 
 func NewSubmitOfferAction() *SubmitOfferAction {
-	return &SubmitOfferAction{
-		offerMapper: mappers.NewOfferMapper(),
-	}
+	return &SubmitOfferAction{}
 }
 
-func (a *SubmitOfferAction) Execute(input dto.SubmitOfferInput) (dto.OfferOutput, error) {
+func (a *SubmitOfferAction) ExecuteFromRequest(req *requests.SubmitOfferRequest, user *models.User) (*models.Offer, error) {
 	var product models.Product
-	if err := facades.Orm().Query().Where("id = ?", input.ProductID).First(&product); err != nil {
-		return dto.OfferOutput{}, fmt.Errorf("product %s not found: %w", input.ProductID, err)
+	if err := facades.Orm().Query().Where("id = ?", req.ProductID).First(&product); err != nil {
+		return nil, fmt.Errorf("product not found: %w", err)
 	}
 
-	totalOffered := input.OfferedPrice * float64(input.Quantity)
-	offer := models.Offer{
+	buyerID := "guest"
+	buyerName := req.Name
+	buyerEmail := req.Email
+	buyerCompany := req.Company
+
+	if user != nil {
+		buyerID = user.ID
+		if buyerName == "" {
+			buyerName = user.Name
+		}
+		if buyerEmail == "" {
+			buyerEmail = user.Email
+		}
+		if buyerCompany == "" {
+			buyerCompany = user.CompanyName
+		}
+	}
+
+	qty := req.Quantity
+	if qty <= 0 {
+		qty = 1
+	}
+
+	offer := &models.Offer{
 		ID:           fmt.Sprintf("off_%d", time.Now().UnixNano()),
 		ProductID:    product.ID,
 		ProductTitle: product.Title,
-		BuyerID:      input.BuyerID,
-		BuyerName:    input.BuyerName,
-		BuyerEmail:   input.BuyerEmail,
-		BuyerCompany: input.BuyerCompany,
-		OfferedPrice: input.OfferedPrice,
-		Quantity:     input.Quantity,
-		TotalOffered: totalOffered,
-		Message:      input.Message,
+		BuyerID:      buyerID,
+		BuyerName:    buyerName,
+		BuyerEmail:   buyerEmail,
+		BuyerCompany: buyerCompany,
+		OfferedPrice: req.OfferedPrice,
+		Quantity:     qty,
+		TotalOffered: req.OfferedPrice * float64(qty),
+		Message:      req.Message,
 		Status:       models.OfferStatusPending,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
 
-	if err := facades.Orm().Query().Create(&offer); err != nil {
-		return dto.OfferOutput{}, err
+	if err := facades.Orm().Query().Create(offer); err != nil {
+		return nil, err
 	}
 
-	return a.offerMapper.ToDTO(offer), nil
+	return offer, nil
 }

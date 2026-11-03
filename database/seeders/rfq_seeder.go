@@ -122,3 +122,4 @@ func (s *RfqSeeder) Run() error {
 
 	return nil
 }
+

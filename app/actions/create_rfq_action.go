@@ -4,47 +4,60 @@ import (
 	"fmt"
 	"time"
 
-	"elcomware/app/dto"
 	"elcomware/app/facades"
-	"elcomware/app/mappers"
+	"elcomware/app/http/requests"
 	"elcomware/app/models"
 )
 
-type CreateRfqAction struct {
-	rfqMapper *mappers.RfqMapper
-}
+type CreateRfqAction struct{}
 
 func NewCreateRfqAction() *CreateRfqAction {
-	return &CreateRfqAction{
-		rfqMapper: mappers.NewRfqMapper(),
-	}
+	return &CreateRfqAction{}
 }
 
-func (a *CreateRfqAction) Execute(input dto.CreateRfqInput) (dto.RfqOutput, error) {
+func (a *CreateRfqAction) ExecuteFromRequest(req *requests.CreateRfqRequest, user *models.User) (*models.Rfq, error) {
 	rfqID := fmt.Sprintf("rfq_%d", time.Now().UnixNano())
 	rfqNumber := fmt.Sprintf("RFQ-%d-%d", time.Now().Year(), time.Now().Unix()%100000)
 
-	rfq := models.Rfq{
+	buyerID := "guest"
+	buyerName := req.BuyerName
+	buyerCompany := req.BuyerCompany
+	buyerCountry := req.BuyerCountry
+
+	if user != nil {
+		buyerID = user.ID
+		if buyerName == "" {
+			buyerName = user.Name
+		}
+		if buyerCompany == "" {
+			buyerCompany = user.CompanyName
+		}
+		if buyerCountry == "" {
+			buyerCountry = user.Country
+		}
+	}
+
+	rfq := &models.Rfq{
 		ID:                 rfqID,
 		RfqNumber:          rfqNumber,
-		BuyerID:            input.BuyerID,
-		BuyerName:          input.BuyerName,
-		BuyerCompany:       input.BuyerCompany,
-		BuyerCountry:       input.BuyerCountry,
-		Title:              input.Title,
-		Category:           input.Category,
-		Quantity:           input.Quantity,
-		TargetPrice:        input.TargetPrice,
-		DestinationCountry: input.DestinationCountry,
-		Specifications:     input.Specifications,
+		BuyerID:            buyerID,
+		BuyerName:          buyerName,
+		BuyerCompany:       buyerCompany,
+		BuyerCountry:       buyerCountry,
+		Title:              req.Title,
+		Category:           req.Category,
+		Quantity:           req.Quantity,
+		TargetPrice:        req.TargetPrice,
+		DestinationCountry: req.DestinationCountry,
+		Specifications:     req.Specifications,
 		Status:             models.RfqStatusOpen,
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
 	}
 
-	if err := facades.Orm().Query().Create(&rfq); err != nil {
-		return dto.RfqOutput{}, err
+	if err := facades.Orm().Query().Create(rfq); err != nil {
+		return nil, err
 	}
 
-	return a.rfqMapper.ToDTO(rfq), nil
+	return rfq, nil
 }

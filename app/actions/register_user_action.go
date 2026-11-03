@@ -5,67 +5,38 @@ import (
 	"fmt"
 	"time"
 
-	"elcomware/app/dto"
 	"elcomware/app/facades"
-	"elcomware/app/mappers"
 	"elcomware/app/models"
 )
 
-type RegisterUserAction struct {
-	userMapper *mappers.UserMapper
-}
+type RegisterUserAction struct{}
 
 func NewRegisterUserAction() *RegisterUserAction {
-	return &RegisterUserAction{
-		userMapper: mappers.NewUserMapper(),
-	}
+	return &RegisterUserAction{}
 }
 
-func (a *RegisterUserAction) Execute(input dto.RegisterInput) (dto.UserOutput, error) {
-	count, _ := facades.Orm().Query().Model(&models.User{}).Where("email = ?", input.Email).Count()
+func (a *RegisterUserAction) Execute(user *models.User) (*models.User, error) {
+	count, _ := facades.Orm().Query().Model(&models.User{}).Where("email = ?", user.Email).Count()
 	if count > 0 {
-		return dto.UserOutput{}, errors.New("email address is already registered")
+		return nil, errors.New("email address is already registered")
 	}
 
-	hashedPassword, err := facades.Hash().Make(input.Password)
-	if err != nil {
-		hashedPassword = input.Password
+	hashedPassword, err := facades.Hash().Make(user.Password)
+	if err == nil {
+		user.Password = hashedPassword
 	}
 
-	role := models.RoleBuyer
-	if input.Role == "merchant" || input.Role == "supplier" {
-		role = models.RoleMerchant
-	} else if input.Role == "admin" {
-		role = models.RoleAdmin
+	if user.ID == "" {
+		user.ID = fmt.Sprintf("usr_%d", time.Now().UnixNano())
+	}
+	if user.Avatar == "" {
+		user.Avatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80"
+	}
+	user.Verified = false
+
+	if err := facades.Orm().Query().Create(user); err != nil {
+		return nil, err
 	}
 
-	accountType := input.AccountType
-	if accountType == "" {
-		if role == models.RoleMerchant {
-			accountType = "supplier"
-		} else {
-			accountType = "individual"
-		}
-	}
-
-	user := models.User{
-		ID:          fmt.Sprintf("usr_%d", time.Now().UnixNano()),
-		Name:        input.Name,
-		Email:       input.Email,
-		Password:    hashedPassword,
-		Role:        role,
-		CompanyName: input.CompanyName,
-		Country:     input.Country,
-		AccountType: accountType,
-		Verified:    false,
-		Avatar:      "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80",
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	}
-
-	if err := facades.Orm().Query().Create(&user); err != nil {
-		return dto.UserOutput{}, err
-	}
-
-	return a.userMapper.ToDTO(user), nil
+	return user, nil
 }

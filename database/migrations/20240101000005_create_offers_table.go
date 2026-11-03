@@ -44,3 +44,4 @@ func (r *M20240101000005CreateOffersTable) Up() error {
 func (r *M20240101000005CreateOffersTable) Down() error {
 	return facades.Schema().DropIfExists("offers")
 }
+

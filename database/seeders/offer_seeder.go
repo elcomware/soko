@@ -62,3 +62,4 @@ func (s *OfferSeeder) Run() error {
 
 	return nil
 }
+

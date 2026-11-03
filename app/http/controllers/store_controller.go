@@ -2,13 +2,13 @@ package controllers
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
 
-	"elcomware/app/dto"
+	"elcomware/app/http/requests"
+	"elcomware/app/models"
+	"elcomware/app/queries"
 	"elcomware/app/services"
 )
 
@@ -19,6 +19,7 @@ type StoreController struct {
 	offerService     *services.OfferService
 	currencyService  *services.CurrencyService
 	dashboardService *services.DashboardService
+	authService      *services.AuthService
 }
 
 func NewStoreController() *StoreController {
@@ -29,11 +30,23 @@ func NewStoreController() *StoreController {
 		offerService:     services.NewOfferService(),
 		currencyService:  services.NewCurrencyService(),
 		dashboardService: services.NewDashboardService(),
+		authService:      services.NewAuthService(),
 	}
 }
 
+func (s *StoreController) getAuthenticatedUser(ctx http.Context) *models.User {
+	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
+		if uid, ok := ctx.Request().Session().Get("user_id").(string); ok && uid != "" {
+			if u, err := s.authService.GetUserByID(uid); err == nil && u != nil {
+				return u
+			}
+		}
+	}
+	return nil
+}
+
 func (s *StoreController) Index(ctx http.Context) http.Response {
-	filter := dto.ProductFilterInput{
+	filter := queries.ProductFilter{
 		Type:      ctx.Request().Query("type", "all"),
 		Format:    ctx.Request().Query("format", "all"),
 		Region:    ctx.Request().Query("region", "global"),
@@ -42,7 +55,7 @@ func (s *StoreController) Index(ctx http.Context) http.Response {
 		Query:     ctx.Request().Query("q", ""),
 	}
 
-	products, _ := s.catalogService.GetCatalog(filter)
+	products, _ := s.catalogService.GetProducts(filter)
 	stats, _ := s.dashboardService.GetStats()
 	currencies := s.currencyService.GetCurrencies()
 	regions := s.currencyService.GetRegions()
@@ -82,12 +95,12 @@ func (s *StoreController) Show(ctx http.Context) http.Response {
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	relatedFilter := dto.ProductFilterInput{
+	relatedList, _ := s.catalogService.GetProducts(queries.ProductFilter{
 		Type:     string(product.Type),
 		Category: product.Category,
-	}
-	relatedList, _ := s.catalogService.GetCatalog(relatedFilter)
-	filteredRelated := make([]dto.ProductOutput, 0)
+	})
+
+	filteredRelated := make([]models.Product, 0)
 	for _, p := range relatedList {
 		if p.ID != product.ID && len(filteredRelated) < 3 {
 			filteredRelated = append(filteredRelated, p)
@@ -106,75 +119,28 @@ func (s *StoreController) Show(ctx http.Context) http.Response {
 }
 
 func (s *StoreController) Checkout(ctx http.Context) http.Response {
-	productID := ctx.Request().Input("product_id")
-	quantity := ctx.Request().InputInt("quantity", 1)
-	customerName := ctx.Request().Input("customer_name")
-	customerEmail := ctx.Request().Input("customer_email")
-	currencyCode := ctx.Request().Input("currency", "USD")
-	paymentRail := ctx.Request().Input("payment_method", "Trade Escrow Guarantee")
-
-	product, err := s.catalogService.GetProductByID(productID)
-	if err != nil || product == nil {
-		ctx.Request().Session().Flash("error", "Invalid product selected for checkout.")
+	var req requests.CheckoutRequest
+	errors, err := ctx.Request().ValidateRequest(&req)
+	if err != nil || errors != nil {
+		errorMsg := "Invalid checkout inputs."
+		if errors != nil {
+			errorMsg = errors.One()
+		}
+		ctx.Request().Session().Flash("error", errorMsg)
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	if quantity < product.MOQ {
-		quantity = product.MOQ
-	}
-
-	// Calculate price according to Alibaba volume tier if available
-	unitPrice := product.Price
-	if len(product.PriceTiers) > 0 {
-		for _, tier := range product.PriceTiers {
-			if quantity >= tier.MinQty && (tier.MaxQty == 0 || quantity <= tier.MaxQty) {
-				unitPrice = tier.Price
-				break
-			}
-		}
-	} else if quantity >= 10 && product.WholesalePrice > 0 {
-		unitPrice = product.WholesalePrice
-	}
-
-	userID := "guest"
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
-		if uid, ok := ctx.Request().Session().Get("user_id").(string); ok && uid != "" {
-			userID = uid
-		}
-	}
-
-	if customerName == "" {
-		customerName = "Enterprise Procurement Partner"
-	}
-	if customerEmail == "" {
-		customerEmail = "procurement@globalbuyer.com"
-	}
-
-	checkoutInput := dto.CheckoutInput{
-		UserID:        userID,
-		CustomerName:  customerName,
-		CustomerEmail: customerEmail,
-		Currency:      currencyCode,
-		PaymentMethod: paymentRail,
-		Items: []dto.CheckoutItemInput{
-			{
-				ProductID: product.ID,
-				Quantity:  quantity,
-				UnitPrice: unitPrice,
-			},
-		},
-	}
-
-	createdOrder, err := s.orderService.Checkout(checkoutInput)
+	currentUser := s.getAuthenticatedUser(ctx)
+	order, err := s.orderService.PlaceOrder(&req, currentUser)
 	if err != nil {
-		ctx.Request().Session().Flash("error", "Failed to complete checkout: "+err.Error())
+		ctx.Request().Session().Flash("error", "Failed to place order: "+err.Error())
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	if createdOrder.HasDigital {
+	if order.HasDigital {
 		ctx.Request().Session().Flash("success", "Escrow Verified! Automated license key issued & instant download token ready.")
 	} else {
-		ctx.Request().Session().Flash("success", fmt.Sprintf("Wholesale order %s placed under Soko Trade Escrow! Supplier dispatched notification.", createdOrder.OrderNumber))
+		ctx.Request().Session().Flash("success", fmt.Sprintf("Wholesale order %s placed under Soko Trade Escrow! Supplier dispatched notification.", order.OrderNumber))
 	}
 
 	return ctx.Response().Redirect(http.StatusFound, "/dashboard")
@@ -182,82 +148,48 @@ func (s *StoreController) Checkout(ctx http.Context) http.Response {
 
 // Make an Offer (eBay Style)
 func (s *StoreController) MakeOffer(ctx http.Context) http.Response {
-	productID := ctx.Request().Input("product_id")
-	offeredPriceStr := ctx.Request().Input("offered_price")
-	quantity := ctx.Request().InputInt("quantity", 1)
-	name := ctx.Request().Input("name")
-	email := ctx.Request().Input("email")
-	company := ctx.Request().Input("company")
-	message := ctx.Request().Input("message")
-
-	offeredPrice, _ := strconv.ParseFloat(offeredPriceStr, 64)
-	if offeredPrice <= 0 || productID == "" {
-		ctx.Request().Session().Flash("error", "Valid offer price is required.")
+	var req requests.SubmitOfferRequest
+	errors, err := ctx.Request().ValidateRequest(&req)
+	if err != nil || errors != nil {
+		errorMsg := "Valid offer details are required."
+		if errors != nil {
+			errorMsg = errors.One()
+		}
+		ctx.Request().Session().Flash("error", errorMsg)
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	product, err := s.catalogService.GetProductByID(productID)
-	if err != nil || product == nil {
-		ctx.Request().Session().Flash("error", "Product not found.")
-		return ctx.Response().Redirect(http.StatusFound, "/")
-	}
-
-	offerInput := dto.SubmitOfferInput{
-		ProductID:    product.ID,
-		BuyerName:    name,
-		BuyerEmail:   email,
-		BuyerCompany: company,
-		OfferedPrice: offeredPrice,
-		Quantity:     quantity,
-		Message:      message,
-	}
-
-	_, err = s.offerService.SubmitOffer(offerInput)
+	currentUser := s.getAuthenticatedUser(ctx)
+	offer, err := s.offerService.SubmitOffer(&req, currentUser)
 	if err != nil {
 		ctx.Request().Session().Flash("error", "Failed to submit offer: "+err.Error())
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	ctx.Request().Session().Flash("success", fmt.Sprintf("Your formal offer of $%.2f/unit for %s has been submitted to the supplier for review!", offeredPrice, product.Title))
+	ctx.Request().Session().Flash("success", fmt.Sprintf("Your formal offer of $%.2f/unit for %s has been submitted to the supplier for review!", offer.OfferedPrice, offer.ProductTitle))
 	return ctx.Response().Redirect(http.StatusFound, "/")
 }
 
 // Request for Quotation (Alibaba Style)
 func (s *StoreController) CreateRfq(ctx http.Context) http.Response {
-	title := strings.TrimSpace(ctx.Request().Input("title"))
-	category := strings.TrimSpace(ctx.Request().Input("category"))
-	quantity := ctx.Request().InputInt("quantity", 10)
-	targetPriceStr := ctx.Request().Input("target_price", "0")
-	targetPrice, _ := strconv.ParseFloat(targetPriceStr, 64)
-	destination := ctx.Request().Input("destination_country")
-	specs := ctx.Request().Input("specifications")
-	buyerName := ctx.Request().Input("buyer_name")
-	buyerCompany := ctx.Request().Input("buyer_company")
-	buyerCountry := ctx.Request().Input("buyer_country")
-
-	if title == "" {
-		ctx.Request().Session().Flash("error", "RFQ title is required.")
+	var req requests.CreateRfqRequest
+	errors, err := ctx.Request().ValidateRequest(&req)
+	if err != nil || errors != nil {
+		errorMsg := "RFQ brief details are required."
+		if errors != nil {
+			errorMsg = errors.One()
+		}
+		ctx.Request().Session().Flash("error", errorMsg)
 		return ctx.Response().Redirect(http.StatusFound, "/#rfq")
 	}
 
-	rfqInput := dto.CreateRfqInput{
-		Title:              title,
-		Category:           category,
-		Quantity:           quantity,
-		TargetPrice:        targetPrice,
-		DestinationCountry: destination,
-		Specifications:     specs,
-		BuyerName:          buyerName,
-		BuyerCompany:       buyerCompany,
-		BuyerCountry:       buyerCountry,
-	}
-
-	created, err := s.rfqService.CreateRfq(rfqInput)
+	currentUser := s.getAuthenticatedUser(ctx)
+	rfq, err := s.rfqService.CreateRfq(&req, currentUser)
 	if err != nil {
 		ctx.Request().Session().Flash("error", "Failed to create RFQ: "+err.Error())
 		return ctx.Response().Redirect(http.StatusFound, "/#rfq")
 	}
 
-	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise RFQ %s published to global suppliers! You will receive quotations within 24 hours.", created.RfqNumber))
+	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise RFQ %s published to global suppliers! You will receive quotations within 24 hours.", rfq.RfqNumber))
 	return ctx.Response().Redirect(http.StatusFound, "/#rfq")
 }

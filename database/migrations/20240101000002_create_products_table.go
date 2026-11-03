@@ -72,3 +72,4 @@ func (r *M20240101000002CreateProductsTable) Up() error {
 func (r *M20240101000002CreateProductsTable) Down() error {
 	return facades.Schema().DropIfExists("products")
 }
+

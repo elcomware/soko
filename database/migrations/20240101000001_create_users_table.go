@@ -41,3 +41,4 @@ func (r *M20240101000001CreateUsersTable) Up() error {
 func (r *M20240101000001CreateUsersTable) Down() error {
 	return facades.Schema().DropIfExists("users")
 }
+

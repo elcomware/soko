@@ -1,7 +1,6 @@
 package services
 
 import (
-	"elcomware/app/dto"
 	"elcomware/app/queries"
 )
 
@@ -15,6 +14,6 @@ func NewDashboardService() *DashboardService {
 	}
 }
 
-func (s *DashboardService) GetStats() (dto.DashboardStatsOutput, error) {
+func (s *DashboardService) GetStats() (map[string]any, error) {
 	return s.dashboardQueries.GetStats()
 }

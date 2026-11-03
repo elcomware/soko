@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type ProductType string
 
@@ -75,7 +78,7 @@ type Product struct {
 	CreatedAt            time.Time     `json:"created_at"`
 	UpdatedAt            time.Time     `json:"updated_at"`
 
-	// In-memory or mapped fields
+	// In-memory / JSON presentation fields
 	PriceTiers           []PriceTier   `gorm:"-" json:"price_tiers,omitempty"`
 	GalleryUrls          []string      `gorm:"-" json:"gallery_urls,omitempty"`
 	Tags                 []string      `gorm:"-" json:"tags,omitempty"`
@@ -83,4 +86,35 @@ type Product struct {
 
 func (Product) TableName() string {
 	return "products"
+}
+
+// Hydrate unpacks JSON text columns into slices for presentation
+func (p *Product) Hydrate() *Product {
+	if p.PriceTiersJSON != "" && len(p.PriceTiers) == 0 {
+		_ = json.Unmarshal([]byte(p.PriceTiersJSON), &p.PriceTiers)
+	}
+	if p.GalleryUrlsJSON != "" && len(p.GalleryUrls) == 0 {
+		_ = json.Unmarshal([]byte(p.GalleryUrlsJSON), &p.GalleryUrls)
+	}
+	if p.TagsJSON != "" && len(p.Tags) == 0 {
+		_ = json.Unmarshal([]byte(p.TagsJSON), &p.Tags)
+	}
+	return p
+}
+
+// PrepareSave packs slices into JSON text columns for DB storage
+func (p *Product) PrepareSave() *Product {
+	if len(p.PriceTiers) > 0 {
+		b, _ := json.Marshal(p.PriceTiers)
+		p.PriceTiersJSON = string(b)
+	}
+	if len(p.GalleryUrls) > 0 {
+		b, _ := json.Marshal(p.GalleryUrls)
+		p.GalleryUrlsJSON = string(b)
+	}
+	if len(p.Tags) > 0 {
+		b, _ := json.Marshal(p.Tags)
+		p.TagsJSON = string(b)
+	}
+	return p
 }

@@ -327,3 +327,4 @@ func (s *ProductSeeder) Run() error {
 
 	return nil
 }
+

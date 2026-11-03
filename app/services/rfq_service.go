@@ -2,48 +2,37 @@ package services
 
 import (
 	"elcomware/app/actions"
-	"elcomware/app/dto"
-	"elcomware/app/mappers"
+	"elcomware/app/http/requests"
+	"elcomware/app/models"
 	"elcomware/app/queries"
 )
 
 type RfqService struct {
-	rfqQueries      *queries.RfqQueries
-	rfqMapper       *mappers.RfqMapper
-	createRfqAction *actions.CreateRfqAction
+	rfqQueries        *queries.RfqQueries
+	createRfqAction   *actions.CreateRfqAction
 	submitQuoteAction *actions.SubmitRfqQuoteAction
 }
 
 func NewRfqService() *RfqService {
 	return &RfqService{
-		rfqQueries:      queries.NewRfqQueries(),
-		rfqMapper:       mappers.NewRfqMapper(),
-		createRfqAction: actions.NewCreateRfqAction(),
+		rfqQueries:        queries.NewRfqQueries(),
+		createRfqAction:   actions.NewCreateRfqAction(),
 		submitQuoteAction: actions.NewSubmitRfqQuoteAction(),
 	}
 }
 
-func (s *RfqService) GetOpenRfqs() ([]dto.RfqOutput, error) {
-	rfqs, err := s.rfqQueries.FindAll()
-	if err != nil {
-		return nil, err
-	}
-	return s.rfqMapper.ToDTOList(rfqs), nil
+func (s *RfqService) GetOpenRfqs() ([]models.Rfq, error) {
+	return s.rfqQueries.FindAll()
 }
 
-func (s *RfqService) GetRfqByID(id string) (*dto.RfqOutput, error) {
-	rfq, err := s.rfqQueries.FindByID(id)
-	if err != nil {
-		return nil, err
-	}
-	dto := s.rfqMapper.ToDTO(*rfq)
-	return &dto, nil
+func (s *RfqService) GetRfqByID(id string) (*models.Rfq, error) {
+	return s.rfqQueries.FindByID(id)
 }
 
-func (s *RfqService) CreateRfq(input dto.CreateRfqInput) (dto.RfqOutput, error) {
-	return s.createRfqAction.Execute(input)
+func (s *RfqService) CreateRfq(req *requests.CreateRfqRequest, user *models.User) (*models.Rfq, error) {
+	return s.createRfqAction.ExecuteFromRequest(req, user)
 }
 
-func (s *RfqService) SubmitQuote(input dto.SubmitQuoteInput) (dto.RfqQuoteOutput, error) {
-	return s.submitQuoteAction.Execute(input)
+func (s *RfqService) SubmitQuote(req *requests.SubmitRfqQuoteRequest, user *models.User) (*models.RfqQuote, error) {
+	return s.submitQuoteAction.ExecuteFromRequest(req, user)
 }
