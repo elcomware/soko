@@ -1,0 +1,13 @@
+.idea
+.vscode
+.DS_Store
+.env
+.env.*
+!.env.example
+storage
+tmp
+node_modules
+public/hot
+*.exe
+*.log
+bootstrap/ssr

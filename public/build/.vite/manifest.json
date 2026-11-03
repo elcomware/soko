@@ -1,0 +1,122 @@
+{
+  "resources/js/Pages/About.vue": {
+    "file": "assets/About-BLrcLh5V.js",
+    "name": "About",
+    "src": "resources/js/Pages/About.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ],
+    "css": [
+      "assets/About-DehBZc3C.css"
+    ]
+  },
+  "resources/js/Pages/Auth/Login.vue": {
+    "file": "assets/Login-BgC9ywnt.js",
+    "name": "Login",
+    "src": "resources/js/Pages/Auth/Login.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ]
+  },
+  "resources/js/Pages/Auth/Register.vue": {
+    "file": "assets/Register-Bp2I-9Wc.js",
+    "name": "Register",
+    "src": "resources/js/Pages/Auth/Register.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ]
+  },
+  "resources/js/Pages/Contact.vue": {
+    "file": "assets/Contact-BTs3JTdr.js",
+    "name": "Contact",
+    "src": "resources/js/Pages/Contact.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ],
+    "css": [
+      "assets/Contact-LdW7XOnC.css"
+    ]
+  },
+  "resources/js/Pages/Dashboard/Index.vue": {
+    "file": "assets/Index-7nSAByoM.js",
+    "name": "Index",
+    "src": "resources/js/Pages/Dashboard/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ]
+  },
+  "resources/js/Pages/Feed.vue": {
+    "file": "assets/Feed-C0s7xwX1.js",
+    "name": "Feed",
+    "src": "resources/js/Pages/Feed.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ],
+    "css": [
+      "assets/Feed-BNgLvK1U.css"
+    ]
+  },
+  "resources/js/Pages/Home.vue": {
+    "file": "assets/Home-BKbeAxTr.js",
+    "name": "Home",
+    "src": "resources/js/Pages/Home.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ],
+    "css": [
+      "assets/Home-mzkMSUxX.css"
+    ],
+    "assets": [
+      "assets/goravel-inertia-CTHQC0c9.png"
+    ]
+  },
+  "resources/js/Pages/Store/Index.vue": {
+    "file": "assets/Index-CM-NqiPP.js",
+    "name": "Index",
+    "src": "resources/js/Pages/Store/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ]
+  },
+  "resources/js/Pages/Store/ProductDetail.vue": {
+    "file": "assets/ProductDetail-DRMcNs30.js",
+    "name": "ProductDetail",
+    "src": "resources/js/Pages/Store/ProductDetail.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts"
+    ]
+  },
+  "resources/js/app.ts": {
+    "file": "assets/app-Y_YvAiYW.js",
+    "name": "app",
+    "src": "resources/js/app.ts",
+    "isEntry": true,
+    "dynamicImports": [
+      "resources/js/Pages/About.vue",
+      "resources/js/Pages/Auth/Login.vue",
+      "resources/js/Pages/Auth/Register.vue",
+      "resources/js/Pages/Contact.vue",
+      "resources/js/Pages/Dashboard/Index.vue",
+      "resources/js/Pages/Feed.vue",
+      "resources/js/Pages/Home.vue",
+      "resources/js/Pages/Store/Index.vue",
+      "resources/js/Pages/Store/ProductDetail.vue"
+    ],
+    "css": [
+      "assets/app-CMktswjL.css"
+    ]
+  },
+  "resources/js/assets/goravel-inertia.png": {
+    "file": "assets/goravel-inertia-CTHQC0c9.png",
+    "src": "resources/js/assets/goravel-inertia.png"
+  }
+}
