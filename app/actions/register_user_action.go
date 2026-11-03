@@ -40,3 +40,4 @@ func (a *RegisterUserAction) Execute(user *models.User) (*models.User, error) {
 
 	return user, nil
 }
+

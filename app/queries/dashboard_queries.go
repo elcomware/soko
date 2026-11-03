@@ -40,3 +40,4 @@ func (q *DashboardQueries) GetStats() (map[string]any, error) {
 		"trade_volume_covered": tradeCoverTotal,
 	}, nil
 }
+

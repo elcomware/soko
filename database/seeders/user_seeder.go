@@ -81,8 +81,8 @@ func (s *UserSeeder) Run() error {
 	}
 
 	for _, u := range users {
-		var existing models.User
-		if err := facades.Orm().Query().Where("id = ? OR email = ?", u.ID, u.Email).First(&existing); err != nil {
+		exists, _ := facades.Orm().Query().Model(&models.User{}).Where("id = ? OR email = ?", u.ID, u.Email).Exists()
+		if !exists {
 			if err := facades.Orm().Query().Create(&u); err != nil {
 				return err
 			}

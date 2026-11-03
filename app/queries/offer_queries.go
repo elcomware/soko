@@ -26,3 +26,4 @@ func (q *OfferQueries) FindByProductID(productID string) ([]models.Offer, error)
 func (q *OfferQueries) CountActive() (int64, error) {
 	return facades.Orm().Query().Model(&models.Offer{}).Where("status = ?", models.OfferStatusPending).Count()
 }
+

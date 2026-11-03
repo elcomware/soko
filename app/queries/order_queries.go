@@ -50,3 +50,4 @@ func (q *OrderQueries) SumRevenue() (float64, error) {
 	err := facades.Orm().Query().Model(&models.Order{}).Sum("total_amount", &total)
 	return total, err
 }
+

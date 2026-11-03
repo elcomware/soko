@@ -32,3 +32,4 @@ func (s *TradeAssuranceService) DisputeWindowDays(isDigital bool) int {
 	}
 	return 30 // 30 days post-customs delivery for physical wholesale inspection
 }
+

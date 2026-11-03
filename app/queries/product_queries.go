@@ -70,3 +70,4 @@ func (q *ProductQueries) FindByID(id string) (*models.Product, error) {
 func (q *ProductQueries) Count() (int64, error) {
 	return facades.Orm().Query().Model(&models.Product{}).Count()
 }
+

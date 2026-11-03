@@ -36,3 +36,4 @@ func (q *UserQueries) FindAll() ([]models.User, error) {
 func (q *UserQueries) Count() (int64, error) {
 	return facades.Orm().Query().Model(&models.User{}).Count()
 }
+

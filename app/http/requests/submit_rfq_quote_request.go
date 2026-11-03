@@ -28,3 +28,4 @@ func (r *SubmitRfqQuoteRequest) Messages(ctx http.Context) map[string]string {
 		"unit_price.required": "Quotation unit price is required.",
 	}
 }
+

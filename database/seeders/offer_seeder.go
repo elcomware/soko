@@ -52,8 +52,8 @@ func (s *OfferSeeder) Run() error {
 	}
 
 	for _, o := range offers {
-		var existing models.Offer
-		if err := facades.Orm().Query().Where("id = ?", o.ID).First(&existing); err != nil {
+		exists, _ := facades.Orm().Query().Model(&models.Offer{}).Where("id = ?", o.ID).Exists()
+		if !exists {
 			if err := facades.Orm().Query().Create(&o); err != nil {
 				return err
 			}

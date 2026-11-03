@@ -9,10 +9,5 @@ import (
 func Seeders() []contractsseeder.Seeder {
 	return []contractsseeder.Seeder{
 		&seeders.DatabaseSeeder{},
-		&seeders.UserSeeder{},
-		&seeders.ProductSeeder{},
-		&seeders.RfqSeeder{},
-		&seeders.OfferSeeder{},
 	}
 }
-

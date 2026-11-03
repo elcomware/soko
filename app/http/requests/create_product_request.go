@@ -45,3 +45,4 @@ func (r *CreateProductRequest) Messages(ctx http.Context) map[string]string {
 		"price.required":    "Unit base price is required.",
 	}
 }
+

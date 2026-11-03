@@ -15,3 +15,4 @@ func (a *DeleteProductAction) Execute(id string) error {
 	_, err := facades.Orm().Query().Where("id = ?", id).Delete(&models.Product{})
 	return err
 }
+

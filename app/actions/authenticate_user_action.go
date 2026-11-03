@@ -27,3 +27,4 @@ func (a *AuthenticateUserAction) Execute(email, password string) (*models.User, 
 
 	return &user, nil
 }
+

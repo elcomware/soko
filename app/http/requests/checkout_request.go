@@ -32,3 +32,4 @@ func (r *CheckoutRequest) Messages(ctx http.Context) map[string]string {
 		"quantity.min":        "Order quantity must be at least 1 unit.",
 	}
 }
+

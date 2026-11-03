@@ -107,8 +107,8 @@ func (s *RfqSeeder) Run() error {
 	}
 
 	for _, item := range rfqs {
-		var existing models.Rfq
-		if err := facades.Orm().Query().Where("id = ?", item.rfq.ID).First(&existing); err != nil {
+		exists, _ := facades.Orm().Query().Model(&models.Rfq{}).Where("id = ?", item.rfq.ID).Exists()
+		if !exists {
 			if err := facades.Orm().Query().Create(&item.rfq); err != nil {
 				return err
 			}

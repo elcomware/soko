@@ -317,8 +317,8 @@ func (s *ProductSeeder) Run() error {
 		p.GalleryUrlsJSON = string(galleryBytes)
 		p.TagsJSON = string(tagsBytes)
 
-		var existing models.Product
-		if err := facades.Orm().Query().Where("id = ?", p.ID).First(&existing); err != nil {
+		exists, _ := facades.Orm().Query().Model(&models.Product{}).Where("id = ?", p.ID).Exists()
+		if !exists {
 			if err := facades.Orm().Query().Create(&p); err != nil {
 				return err
 			}

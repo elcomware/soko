@@ -28,3 +28,4 @@ func (a *IssueDigitalLicenseAction) Execute(product *models.Product) (licenseKey
 
 	return licenseKey, downloadUrl
 }
+

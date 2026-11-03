@@ -42,3 +42,4 @@ func (q *RfqQueries) FindByID(id string) (*models.Rfq, error) {
 func (q *RfqQueries) CountPending() (int64, error) {
 	return facades.Orm().Query().Model(&models.Rfq{}).Where("status = ?", models.RfqStatusOpen).Count()
 }
+

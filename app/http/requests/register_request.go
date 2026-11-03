@@ -34,3 +34,4 @@ func (r *RegisterRequest) Messages(ctx http.Context) map[string]string {
 		"password.min_len":  "Password must be at least 6 characters.",
 	}
 }
+

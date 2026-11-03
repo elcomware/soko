@@ -33,3 +33,4 @@ func (r *SubmitOfferRequest) Messages(ctx http.Context) map[string]string {
 		"quantity.required":      "Offer quantity is required.",
 	}
 }
+

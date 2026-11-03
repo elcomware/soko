@@ -64,3 +64,4 @@ func (s *LogisticsService) GetShippingOptions(fromRegion, toRegion string, isDig
 		},
 	}
 }
+

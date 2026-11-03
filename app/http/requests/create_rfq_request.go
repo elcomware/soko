@@ -36,3 +36,4 @@ func (r *CreateRfqRequest) Messages(ctx http.Context) map[string]string {
 		"quantity.required": "Target sourcing quantity is required.",
 	}
 }
+
