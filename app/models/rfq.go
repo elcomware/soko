@@ -41,3 +41,4 @@ type Rfq struct {
 	Quotes             []RfqQuote `json:"quotes"`
 	CreatedAt          time.Time  `json:"created_at"`
 }
+

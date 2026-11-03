@@ -18,3 +18,4 @@ type MarketRegion struct {
 	VatPercentage      float64  `json:"vat_percentage"`
 	CustomsClearanceHr int      `json:"customs_clearance_hr"`
 }
+

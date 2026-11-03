@@ -80,3 +80,4 @@ export function useCurrency(initialCurrencies?: Currency[]) {
     formatPrice,
   }
 }
+

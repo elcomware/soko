@@ -26,3 +26,4 @@ type Offer struct {
 	Status        OfferStatus `json:"status"`
 	CreatedAt     time.Time   `json:"created_at"`
 }
+
