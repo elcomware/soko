@@ -1,6 +1,6 @@
 {
   "resources/js/Pages/About.vue": {
-    "file": "assets/About-BLrcLh5V.js",
+    "file": "assets/About-ExHONknN.js",
     "name": "About",
     "src": "resources/js/Pages/About.vue",
     "isDynamicEntry": true,
@@ -12,7 +12,7 @@
     ]
   },
   "resources/js/Pages/Auth/Login.vue": {
-    "file": "assets/Login-BgC9ywnt.js",
+    "file": "assets/Login-DP3Q0bGI.js",
     "name": "Login",
     "src": "resources/js/Pages/Auth/Login.vue",
     "isDynamicEntry": true,
@@ -21,7 +21,7 @@
     ]
   },
   "resources/js/Pages/Auth/Register.vue": {
-    "file": "assets/Register-Bp2I-9Wc.js",
+    "file": "assets/Register-B-UKn7Xd.js",
     "name": "Register",
     "src": "resources/js/Pages/Auth/Register.vue",
     "isDynamicEntry": true,
@@ -30,7 +30,7 @@
     ]
   },
   "resources/js/Pages/Contact.vue": {
-    "file": "assets/Contact-BTs3JTdr.js",
+    "file": "assets/Contact-DM4TpS05.js",
     "name": "Contact",
     "src": "resources/js/Pages/Contact.vue",
     "isDynamicEntry": true,
@@ -42,7 +42,7 @@
     ]
   },
   "resources/js/Pages/Dashboard/Index.vue": {
-    "file": "assets/Index-7nSAByoM.js",
+    "file": "assets/Index-DQn9Vzed.js",
     "name": "Index",
     "src": "resources/js/Pages/Dashboard/Index.vue",
     "isDynamicEntry": true,
@@ -51,7 +51,7 @@
     ]
   },
   "resources/js/Pages/Feed.vue": {
-    "file": "assets/Feed-C0s7xwX1.js",
+    "file": "assets/Feed-CIHYbbth.js",
     "name": "Feed",
     "src": "resources/js/Pages/Feed.vue",
     "isDynamicEntry": true,
@@ -63,7 +63,7 @@
     ]
   },
   "resources/js/Pages/Home.vue": {
-    "file": "assets/Home-BKbeAxTr.js",
+    "file": "assets/Home-o7i6J0KB.js",
     "name": "Home",
     "src": "resources/js/Pages/Home.vue",
     "isDynamicEntry": true,
@@ -78,7 +78,7 @@
     ]
   },
   "resources/js/Pages/Store/Index.vue": {
-    "file": "assets/Index-CM-NqiPP.js",
+    "file": "assets/Index-BZQsJyZA.js",
     "name": "Index",
     "src": "resources/js/Pages/Store/Index.vue",
     "isDynamicEntry": true,
@@ -87,7 +87,7 @@
     ]
   },
   "resources/js/Pages/Store/ProductDetail.vue": {
-    "file": "assets/ProductDetail-DRMcNs30.js",
+    "file": "assets/ProductDetail-Cng4FXQC.js",
     "name": "ProductDetail",
     "src": "resources/js/Pages/Store/ProductDetail.vue",
     "isDynamicEntry": true,
@@ -96,7 +96,7 @@
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-Y_YvAiYW.js",
+    "file": "assets/app-DixsqrPz.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
@@ -112,7 +112,7 @@
       "resources/js/Pages/Store/ProductDetail.vue"
     ],
     "css": [
-      "assets/app-CMktswjL.css"
+      "assets/app-Br3NJIFS.css"
     ]
   },
   "resources/js/assets/goravel-inertia.png": {

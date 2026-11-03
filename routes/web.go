@@ -23,10 +23,12 @@ func Web() {
 		authController := controllers.NewAuthController()
 		dashboardController := controllers.NewDashboardController()
 
-		// eStore Landing & Front
+		// eStore Landing, Global Catalog & B2B Features
 		router.Get("/", storeController.Index)
 		router.Get("/products/{id}", storeController.Show)
 		router.Post("/checkout", storeController.Checkout)
+		router.Post("/make-offer", storeController.MakeOffer)
+		router.Post("/rfqs", storeController.CreateRfq)
 
 		// Authentication & Account Creation
 		router.Get("/login", authController.ShowLogin)
@@ -40,6 +42,7 @@ func Web() {
 			authRouter.Get("/dashboard", dashboardController.Index)
 			authRouter.Post("/dashboard/products", dashboardController.CreateProduct)
 			authRouter.Post("/dashboard/products/{id}/delete", dashboardController.DeleteProduct)
+			authRouter.Post("/dashboard/rfqs/quote", dashboardController.SubmitRfqQuote)
 		})
 	})
 }
