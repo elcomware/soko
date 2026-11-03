@@ -27,6 +27,7 @@ import (
 	"github.com/goravel/inertia"
 	"github.com/goravel/openai"
 	"github.com/goravel/postgres"
+	"github.com/goravel/sqlite"
 )
 
 func Providers() []foundation.ServiceProvider {
@@ -45,6 +46,7 @@ func Providers() []foundation.ServiceProvider {
 		&openai.ServiceProvider{},
 		&database.ServiceProvider{},
 		&postgres.ServiceProvider{},
+		&sqlite.ServiceProvider{},
 		&auth.ServiceProvider{},
 		&crypt.ServiceProvider{},
 		&queue.ServiceProvider{},

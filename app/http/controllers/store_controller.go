@@ -8,33 +8,45 @@ import (
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
 
-	"elcomware/app/models"
+	"elcomware/app/dto"
 	"elcomware/app/services"
 )
 
 type StoreController struct {
-	store *services.Store
+	catalogService   *services.CatalogService
+	orderService     *services.OrderService
+	rfqService       *services.RfqService
+	offerService     *services.OfferService
+	currencyService  *services.CurrencyService
+	dashboardService *services.DashboardService
 }
 
 func NewStoreController() *StoreController {
 	return &StoreController{
-		store: services.GetStore(),
+		catalogService:   services.NewCatalogService(),
+		orderService:     services.NewOrderService(),
+		rfqService:       services.NewRfqService(),
+		offerService:     services.NewOfferService(),
+		currencyService:  services.NewCurrencyService(),
+		dashboardService: services.NewDashboardService(),
 	}
 }
 
 func (s *StoreController) Index(ctx http.Context) http.Response {
-	filterType := ctx.Request().Query("type", "all")
-	format := ctx.Request().Query("format", "all")
-	region := ctx.Request().Query("region", "global")
-	category := ctx.Request().Query("category", "all")
-	condition := ctx.Request().Query("condition", "all")
-	query := ctx.Request().Query("q", "")
+	filter := dto.ProductFilterInput{
+		Type:      ctx.Request().Query("type", "all"),
+		Format:    ctx.Request().Query("format", "all"),
+		Region:    ctx.Request().Query("region", "global"),
+		Category:  ctx.Request().Query("category", "all"),
+		Condition: ctx.Request().Query("condition", "all"),
+		Query:     ctx.Request().Query("q", ""),
+	}
 
-	products := s.store.GetProducts(filterType, format, region, category, condition, query)
-	stats := s.store.GetDashboardStats()
-	currencies := s.store.GetCurrencies()
-	regions := s.store.GetRegions()
-	rfqs := s.store.GetRfqs()
+	products, _ := s.catalogService.GetCatalog(filter)
+	stats, _ := s.dashboardService.GetStats()
+	currencies := s.currencyService.GetCurrencies()
+	regions := s.currencyService.GetRegions()
+	rfqs, _ := s.rfqService.GetOpenRfqs()
 
 	categories := []map[string]any{
 		{"id": "all", "name": "All Categories", "icon": "Layers", "count": len(products)},
@@ -52,34 +64,38 @@ func (s *StoreController) Index(ctx http.Context) http.Response {
 		"currencies":      currencies,
 		"regions":         regions,
 		"rfqs":            rfqs,
-		"activeType":      filterType,
-		"activeFormat":    format,
-		"activeRegion":    region,
-		"activeCategory":  category,
-		"activeCondition": condition,
-		"searchQuery":     query,
+		"activeType":      filter.Type,
+		"activeFormat":    filter.Format,
+		"activeRegion":    filter.Region,
+		"activeCategory":  filter.Category,
+		"activeCondition": filter.Condition,
+		"searchQuery":     filter.Query,
 		"stats":           stats,
 	})
 }
 
 func (s *StoreController) Show(ctx http.Context) http.Response {
 	id := ctx.Request().Route("id")
-	product := s.store.GetProductByID(id)
-	if product == nil {
+	product, err := s.catalogService.GetProductByID(id)
+	if err != nil || product == nil {
 		ctx.Request().Session().Flash("error", "Product not found.")
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	related := s.store.GetProducts(string(product.Type), "", "", product.Category, "", "")
-	filteredRelated := make([]*models.Product, 0)
-	for _, p := range related {
+	relatedFilter := dto.ProductFilterInput{
+		Type:     string(product.Type),
+		Category: product.Category,
+	}
+	relatedList, _ := s.catalogService.GetCatalog(relatedFilter)
+	filteredRelated := make([]dto.ProductOutput, 0)
+	for _, p := range relatedList {
 		if p.ID != product.ID && len(filteredRelated) < 3 {
 			filteredRelated = append(filteredRelated, p)
 		}
 	}
 
-	currencies := s.store.GetCurrencies()
-	regions := s.store.GetRegions()
+	currencies := s.currencyService.GetCurrencies()
+	regions := s.currencyService.GetRegions()
 
 	return inertiafacades.Inertia().Render(ctx, "Store/ProductDetail", map[string]any{
 		"product":    product,
@@ -97,8 +113,8 @@ func (s *StoreController) Checkout(ctx http.Context) http.Response {
 	currencyCode := ctx.Request().Input("currency", "USD")
 	paymentRail := ctx.Request().Input("payment_method", "Trade Escrow Guarantee")
 
-	product := s.store.GetProductByID(productID)
-	if product == nil {
+	product, err := s.catalogService.GetProductByID(productID)
+	if err != nil || product == nil {
 		ctx.Request().Session().Flash("error", "Invalid product selected for checkout.")
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
@@ -120,18 +136,10 @@ func (s *StoreController) Checkout(ctx http.Context) http.Response {
 		unitPrice = product.WholesalePrice
 	}
 
-	total := float64(quantity) * unitPrice
-
 	userID := "guest"
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user") != nil {
-		if u, ok := ctx.Request().Session().Get("user").(*models.User); ok {
-			userID = u.ID
-			if customerName == "" {
-				customerName = u.Name
-			}
-			if customerEmail == "" {
-				customerEmail = u.Email
-			}
+	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
+		if uid, ok := ctx.Request().Session().Get("user_id").(string); ok && uid != "" {
+			userID = uid
 		}
 	}
 
@@ -142,26 +150,27 @@ func (s *StoreController) Checkout(ctx http.Context) http.Response {
 		customerEmail = "procurement@globalbuyer.com"
 	}
 
-	order := &models.Order{
+	checkoutInput := dto.CheckoutInput{
 		UserID:        userID,
 		CustomerName:  customerName,
 		CustomerEmail: customerEmail,
-		TotalAmount:   total,
 		Currency:      currencyCode,
 		PaymentMethod: paymentRail,
-		Items: []models.OrderItem{
+		Items: []dto.CheckoutItemInput{
 			{
-				ProductID:    product.ID,
-				ProductTitle: product.Title,
-				ProductType:  product.Type,
-				Quantity:     quantity,
-				UnitPrice:    unitPrice,
-				TotalPrice:   total,
+				ProductID: product.ID,
+				Quantity:  quantity,
+				UnitPrice: unitPrice,
 			},
 		},
 	}
 
-	createdOrder := s.store.CreateOrder(order)
+	createdOrder, err := s.orderService.Checkout(checkoutInput)
+	if err != nil {
+		ctx.Request().Session().Flash("error", "Failed to complete checkout: "+err.Error())
+		return ctx.Response().Redirect(http.StatusFound, "/")
+	}
+
 	if createdOrder.HasDigital {
 		ctx.Request().Session().Flash("success", "Escrow Verified! Automated license key issued & instant download token ready.")
 	} else {
@@ -187,15 +196,14 @@ func (s *StoreController) MakeOffer(ctx http.Context) http.Response {
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	product := s.store.GetProductByID(productID)
-	if product == nil {
+	product, err := s.catalogService.GetProductByID(productID)
+	if err != nil || product == nil {
 		ctx.Request().Session().Flash("error", "Product not found.")
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
 
-	offer := &models.Offer{
+	offerInput := dto.SubmitOfferInput{
 		ProductID:    product.ID,
-		ProductTitle: product.Title,
 		BuyerName:    name,
 		BuyerEmail:   email,
 		BuyerCompany: company,
@@ -204,7 +212,12 @@ func (s *StoreController) MakeOffer(ctx http.Context) http.Response {
 		Message:      message,
 	}
 
-	s.store.SubmitOffer(offer)
+	_, err = s.offerService.SubmitOffer(offerInput)
+	if err != nil {
+		ctx.Request().Session().Flash("error", "Failed to submit offer: "+err.Error())
+		return ctx.Response().Redirect(http.StatusFound, "/")
+	}
+
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Your formal offer of $%.2f/unit for %s has been submitted to the supplier for review!", offeredPrice, product.Title))
 	return ctx.Response().Redirect(http.StatusFound, "/")
 }
@@ -227,7 +240,7 @@ func (s *StoreController) CreateRfq(ctx http.Context) http.Response {
 		return ctx.Response().Redirect(http.StatusFound, "/#rfq")
 	}
 
-	rfq := &models.Rfq{
+	rfqInput := dto.CreateRfqInput{
 		Title:              title,
 		Category:           category,
 		Quantity:           quantity,
@@ -239,7 +252,12 @@ func (s *StoreController) CreateRfq(ctx http.Context) http.Response {
 		BuyerCountry:       buyerCountry,
 	}
 
-	created := s.store.CreateRfq(rfq)
+	created, err := s.rfqService.CreateRfq(rfqInput)
+	if err != nil {
+		ctx.Request().Session().Flash("error", "Failed to create RFQ: "+err.Error())
+		return ctx.Response().Redirect(http.StatusFound, "/#rfq")
+	}
+
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise RFQ %s published to global suppliers! You will receive quotations within 24 hours.", created.RfqNumber))
 	return ctx.Response().Redirect(http.StatusFound, "/#rfq")
 }

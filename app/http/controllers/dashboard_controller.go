@@ -9,47 +9,64 @@ import (
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
 
+	"elcomware/app/dto"
+	"elcomware/app/facades"
 	"elcomware/app/models"
 	"elcomware/app/services"
 )
 
 type DashboardController struct {
-	store *services.Store
+	dashboardService *services.DashboardService
+	catalogService   *services.CatalogService
+	orderService     *services.OrderService
+	rfqService       *services.RfqService
+	offerService     *services.OfferService
+	currencyService  *services.CurrencyService
+	authService      *services.AuthService
 }
 
 func NewDashboardController() *DashboardController {
 	return &DashboardController{
-		store: services.GetStore(),
+		dashboardService: services.NewDashboardService(),
+		catalogService:   services.NewCatalogService(),
+		orderService:     services.NewOrderService(),
+		rfqService:       services.NewRfqService(),
+		offerService:     services.NewOfferService(),
+		currencyService:  services.NewCurrencyService(),
+		authService:      services.NewAuthService(),
 	}
 }
 
 func (d *DashboardController) Index(ctx http.Context) http.Response {
-	var currentUser *models.User
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user") != nil {
-		if u, ok := ctx.Request().Session().Get("user").(*models.User); ok {
-			currentUser = u
+	var currentUser *dto.UserOutput
+
+	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
+		if uid, ok := ctx.Request().Session().Get("user_id").(string); ok && uid != "" {
+			currentUser, _ = d.authService.GetUserByID(uid)
 		}
 	}
 
 	if currentUser == nil {
-		currentUser = d.store.GetUserByID("usr-admin-1")
+		currentUser, _ = d.authService.GetUserByID("usr_admin_01")
 	}
 
-	stats := d.store.GetDashboardStats()
-	products := d.store.GetProducts("all", "all", "all", "all", "all", "")
-	orders := d.store.GetOrders()
-	users := d.store.GetUsers()
-	rfqs := d.store.GetRfqs()
-	offers := d.store.GetOffers()
-	currencies := d.store.GetCurrencies()
-	regions := d.store.GetRegions()
+	stats, _ := d.dashboardService.GetStats()
+	products, _ := d.catalogService.GetCatalog(dto.ProductFilterInput{})
+	orders, _ := d.orderService.GetAllOrders()
+	rfqs, _ := d.rfqService.GetOpenRfqs()
+	offers, _ := d.offerService.GetPendingOffers()
+	currencies := d.currencyService.GetCurrencies()
+	regions := d.currencyService.GetRegions()
+
+	var allUsers []models.User
+	_ = facades.Orm().Query().OrderByDesc("created_at").Get(&allUsers)
 
 	return inertiafacades.Inertia().Render(ctx, "Dashboard/Index", map[string]any{
 		"currentUser": currentUser,
 		"stats":       stats,
 		"products":    products,
 		"orders":      orders,
-		"users":       users,
+		"users":       allUsers,
 		"rfqs":        rfqs,
 		"offers":      offers,
 		"currencies":  currencies,
@@ -99,19 +116,21 @@ func (d *DashboardController) CreateProduct(ctx http.Context) http.Response {
 
 	vendorName := "Soko Verified Supplier"
 	vendorCountry := "Global"
-	vendorID := "usr-merchant-1"
+	vendorID := "usr_vendor_01"
 	vendorBadge := "Gold Verified Supplier"
 
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user") != nil {
-		if u, ok := ctx.Request().Session().Get("user").(*models.User); ok {
-			vendorName = u.CompanyName
-			if vendorName == "" {
-				vendorName = u.Name
-			}
-			vendorCountry = u.Country
-			vendorID = u.ID
-			if u.Role == models.RoleAdmin {
-				vendorBadge = "Platform Official"
+	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
+		if uid, ok := ctx.Request().Session().Get("user_id").(string); ok && uid != "" {
+			if u, err := d.authService.GetUserByID(uid); err == nil && u != nil {
+				vendorName = u.CompanyName
+				if vendorName == "" {
+					vendorName = u.Name
+				}
+				vendorCountry = u.Country
+				vendorID = u.ID
+				if u.Role == "admin" {
+					vendorBadge = "Platform Official"
+				}
 			}
 		}
 	}
@@ -149,7 +168,7 @@ func (d *DashboardController) CreateProduct(ctx http.Context) http.Response {
 		}
 	}
 
-	newProduct := &models.Product{
+	input := dto.CreateProductInput{
 		Title:                title,
 		Slug:                 strings.ToLower(strings.ReplaceAll(title, " ", "-")),
 		Category:             category,
@@ -175,18 +194,20 @@ func (d *DashboardController) CreateProduct(ctx http.Context) http.Response {
 		VendorPositiveRate:   "99.5%",
 		TradeAssuranceCover:  1000000.00,
 		AcceptsOffers:        acceptsOffers,
-		Rating:               5.0,
-		ReviewsCount:         1,
 		Featured:             true,
 		LeadTimeDays:         leadTime,
 		Incoterm:             incoterm,
 		DigitalDownloadUrl:   digitalUrl,
 		DigitalLicenseFormat: digitalFormat,
 		DigitalFileSize:      digitalFileSize,
-		CreatedAt:            time.Now(),
 	}
 
-	d.store.AddProduct(newProduct)
+	_, err := d.catalogService.CreateProduct(input)
+	if err != nil {
+		ctx.Request().Session().Flash("error", "Failed to create product: "+err.Error())
+		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
+	}
+
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise listing '%s' published to %s marketplace!", title, strings.ToUpper(region)))
 	return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 }
@@ -194,8 +215,11 @@ func (d *DashboardController) CreateProduct(ctx http.Context) http.Response {
 func (d *DashboardController) DeleteProduct(ctx http.Context) http.Response {
 	id := ctx.Request().Route("id")
 	if id != "" {
-		d.store.DeleteProduct(id)
-		ctx.Request().Session().Flash("success", "Product deleted from catalog.")
+		if err := d.catalogService.DeleteProduct(id); err != nil {
+			ctx.Request().Session().Flash("error", "Failed to delete product: "+err.Error())
+		} else {
+			ctx.Request().Session().Flash("success", "Product deleted from catalog.")
+		}
 	}
 	return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 }
@@ -214,27 +238,29 @@ func (d *DashboardController) SubmitRfqQuote(ctx http.Context) http.Response {
 
 	vendorName := "Apex Technologies"
 	vendorCountry := "Germany"
-	vendorID := "usr-merchant-1"
+	vendorID := "usr_vendor_01"
 
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user") != nil {
-		if u, ok := ctx.Request().Session().Get("user").(*models.User); ok {
-			vendorName = u.CompanyName
-			vendorCountry = u.Country
-			vendorID = u.ID
+	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
+		if uid, ok := ctx.Request().Session().Get("user_id").(string); ok && uid != "" {
+			if u, err := d.authService.GetUserByID(uid); err == nil && u != nil {
+				vendorName = u.CompanyName
+				vendorCountry = u.Country
+				vendorID = u.ID
+			}
 		}
 	}
 
-	quote := models.RfqQuote{
+	quoteInput := dto.SubmitQuoteInput{
+		RfqID:         rfqID,
 		VendorID:      vendorID,
 		VendorName:    vendorName,
 		VendorCountry: vendorCountry,
 		UnitPrice:     unitPrice,
-		TotalAmount:   unitPrice * 100, // estimated
 		LeadTimeDays:  leadTime,
 		Notes:         notes,
 	}
 
-	_, err := d.store.AddRfqQuote(rfqID, quote)
+	_, err := d.rfqService.SubmitQuote(quoteInput)
 	if err != nil {
 		ctx.Request().Session().Flash("error", err.Error())
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")

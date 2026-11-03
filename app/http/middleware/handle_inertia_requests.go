@@ -61,5 +61,16 @@ func authUser(ctx http.Context) any {
 	if !ctx.Request().HasSession() {
 		return nil
 	}
-	return ctx.Request().Session().Get("user")
+	if u := ctx.Request().Session().Get("user"); u != nil {
+		return u
+	}
+	if uid := ctx.Request().Session().Get("user_id"); uid != nil {
+		return map[string]any{
+			"id":    uid,
+			"name":  ctx.Request().Session().Get("user_name"),
+			"email": ctx.Request().Session().Get("user_email"),
+			"role":  ctx.Request().Session().Get("user_role"),
+		}
+	}
+	return nil
 }

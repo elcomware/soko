@@ -11,29 +11,41 @@ const (
 )
 
 type OrderItem struct {
-	ProductID          string      `json:"product_id"`
-	ProductTitle       string      `json:"product_title"`
-	ProductType        ProductType `json:"product_type"`
-	Quantity           int         `json:"quantity"`
-	UnitPrice          float64     `json:"unit_price"`
-	TotalPrice         float64     `json:"total_price"`
-	DigitalLicenseKey  string      `json:"digital_license_key,omitempty"`
-	DigitalDownloadUrl string      `json:"digital_download_url,omitempty"`
+	ID                 string      `gorm:"primaryKey;type:varchar(64)" json:"id"`
+	OrderID            string      `gorm:"type:varchar(64);index" json:"order_id"`
+	ProductID          string      `gorm:"type:varchar(64);index" json:"product_id"`
+	ProductTitle       string      `gorm:"type:varchar(255)" json:"product_title"`
+	ProductType        ProductType `gorm:"type:varchar(64)" json:"product_type"`
+	Quantity           int         `gorm:"type:integer" json:"quantity"`
+	UnitPrice          float64     `gorm:"type:double" json:"unit_price"`
+	TotalPrice         float64     `gorm:"type:double" json:"total_price"`
+	DigitalLicenseKey  string      `gorm:"type:text" json:"digital_license_key,omitempty"`
+	DigitalDownloadUrl string      `gorm:"type:text" json:"digital_download_url,omitempty"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
+func (OrderItem) TableName() string {
+	return "order_items"
 }
 
 type Order struct {
-	ID            string      `json:"id"`
-	OrderNumber   string      `json:"order_number"`
-	UserID        string      `json:"user_id"`
-	CustomerName  string      `json:"customer_name"`
-	CustomerEmail string      `json:"customer_email"`
-	Items         []OrderItem `json:"items"`
-	TotalAmount   float64     `json:"total_amount"`
-	Currency      string      `json:"currency"`
-	Status        OrderStatus `json:"status"`
-	PaymentMethod string      `json:"payment_method"`
-	HasDigital    bool        `json:"has_digital"`
-	HasPhysical   bool        `json:"has_physical"`
+	ID            string      `gorm:"primaryKey;type:varchar(64)" json:"id"`
+	OrderNumber   string      `gorm:"type:varchar(64);uniqueIndex" json:"order_number"`
+	UserID        string      `gorm:"type:varchar(64);index" json:"user_id"`
+	CustomerName  string      `gorm:"type:varchar(255)" json:"customer_name"`
+	CustomerEmail string      `gorm:"type:varchar(255)" json:"customer_email"`
+	Items         []OrderItem `gorm:"foreignKey:OrderID" json:"items"`
+	TotalAmount   float64     `gorm:"type:double" json:"total_amount"`
+	Currency      string      `gorm:"type:varchar(16)" json:"currency"`
+	Status        OrderStatus `gorm:"type:varchar(32)" json:"status"`
+	PaymentMethod string      `gorm:"type:varchar(64)" json:"payment_method"`
+	HasDigital    bool        `gorm:"type:boolean" json:"has_digital"`
+	HasPhysical   bool        `gorm:"type:boolean" json:"has_physical"`
 	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
+func (Order) TableName() string {
+	return "orders"
+}

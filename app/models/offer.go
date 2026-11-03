@@ -12,18 +12,22 @@ const (
 )
 
 type Offer struct {
-	ID            string      `json:"id"`
-	ProductID     string      `json:"product_id"`
-	ProductTitle  string      `json:"product_title"`
-	BuyerID       string      `json:"buyer_id"`
-	BuyerName     string      `json:"buyer_name"`
-	BuyerEmail    string      `json:"buyer_email"`
-	BuyerCompany  string      `json:"buyer_company"`
-	OfferedPrice  float64     `json:"offered_price"`
-	Quantity      int         `json:"quantity"`
-	TotalOffered  float64     `json:"total_offered"`
-	Message       string      `json:"message"`
-	Status        OfferStatus `json:"status"`
-	CreatedAt     time.Time   `json:"created_at"`
+	ID           string      `gorm:"primaryKey;type:varchar(64)" json:"id"`
+	ProductID    string      `gorm:"type:varchar(64);index" json:"product_id"`
+	ProductTitle string      `gorm:"type:varchar(255)" json:"product_title"`
+	BuyerID      string      `gorm:"type:varchar(64);index" json:"buyer_id"`
+	BuyerName    string      `gorm:"type:varchar(255)" json:"buyer_name"`
+	BuyerEmail   string      `gorm:"type:varchar(255)" json:"buyer_email"`
+	BuyerCompany string      `gorm:"type:varchar(255)" json:"buyer_company"`
+	OfferedPrice float64     `gorm:"type:double" json:"offered_price"`
+	Quantity     int         `gorm:"type:integer" json:"quantity"`
+	TotalOffered float64     `gorm:"type:double" json:"total_offered"`
+	Message      string      `gorm:"type:text" json:"message"`
+	Status       OfferStatus `gorm:"type:varchar(32);index" json:"status"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
 }
 
+func (Offer) TableName() string {
+	return "offers"
+}

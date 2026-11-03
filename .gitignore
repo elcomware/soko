@@ -11,3 +11,4 @@ public/hot
 *.exe
 *.log
 bootstrap/ssr
+*.sqlite
