@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	contractsfoundation "github.com/goravel/framework/contracts/foundation"
+	"github.com/goravel/framework/contracts/foundation/configuration"
 	"github.com/goravel/framework/foundation"
 
 	"elcomware/config"
@@ -14,6 +15,10 @@ func Boot() contractsfoundation.Application {
 		WithRouting(func() {
 			routes.Web()
 			routes.Grpc()
+		}).
+		WithMiddleware(func(handler configuration.Middleware) {
+			// Global middleware stack (Goravel v1.18)
+			// Route-specific session & inertia middleware are scoped within routes.Web()
 		}).
 		WithProviders(Providers).
 		WithConfig(config.Boot).
