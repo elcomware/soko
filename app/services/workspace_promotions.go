@@ -32,6 +32,7 @@ type WorkspacePromotionPageMeta struct {
 	Filters       WorkspacePromotionFilters `json:"filters"`
 }
 type WorkspacePromotionPage struct {
+	Merchants              []map[string]string        `json:"merchants"`
 	Products               []map[string]string        `json:"products"`
 	CampaignCounts         map[string]int64           `json:"campaignCounts"`
 	ServerTime             string                     `json:"serverTime"`
@@ -95,25 +96,30 @@ func LoadWorkspacePromotions(actor *models.User, f WorkspacePromotionFilters, no
 			}
 			return q
 		}
-		// Target choices remain complete until a separate bounded picker contract exists.
-		productsQuery := tx.Model(&models.Product{}).Select("id", "title", "category", "sub_category", "vendor_id", "vendor_name")
+		// Merchant choices are distinct owner/name pairs, never catalog rows.
+		merchantsQuery := tx.Model(&models.Product{}).Select("vendor_id", "MAX(vendor_name) AS vendor_name").Where("vendor_id <> ?", "")
 		if !full {
-			productsQuery = productsQuery.Where("vendor_id = ?", actor.ID)
+			merchantsQuery = merchantsQuery.Where("vendor_id = ?", actor.ID)
 		}
-		var products []models.Product
-		if err := productsQuery.OrderBy("id").Get(&products); err != nil {
+		var owners []struct {
+			VendorID   string
+			VendorName string
+		}
+		if err := merchantsQuery.GroupBy("vendor_id").OrderBy("vendor_id").Get(&owners); err != nil {
 			return err
 		}
 		merchantNames := map[string]string{}
 		out.Products = []map[string]string{}
-		for _, p := range products {
-			name := p.VendorName
+		out.Merchants = []map[string]string{}
+		for _, owner := range owners {
+			name := owner.VendorName
 			if name == "" {
-				name = p.VendorID
+				name = owner.VendorID
 			}
-			merchantNames[p.VendorID] = name
-			out.Products = append(out.Products, map[string]string{"id": p.ID, "title": p.Title, "category": p.Category, "sub_category": p.SubCategory, "vendor_id": p.VendorID, "vendor_name": p.VendorName})
+			merchantNames[owner.VendorID] = name
+			out.Merchants = append(out.Merchants, map[string]string{"id": owner.VendorID, "name": name})
 		}
+
 		out.ServerTime = now.UTC().Format(time.RFC3339Nano)
 		out.CampaignCounts = map[string]int64{}
 		for _, status := range []string{"active", "scheduled", "ended", "disabled"} {

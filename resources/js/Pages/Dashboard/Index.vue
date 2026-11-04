@@ -155,99 +155,9 @@
                 >
             </section>
             <template v-else>
-                <form
-                    v-if="section === 'products' && productPage"
-                    class="product-list-toolbar"
-                    @submit.prevent="applyProductFilters"
-                    :aria-busy="productListLoading"
-                >
-                    <label class="product-query"
-                        >Search products<input
-                            v-model="productFilters.q"
-                            type="search"
-                            maxlength="120"
-                            placeholder="Product name, SKU, category or merchant"
-                            :disabled="busy || productRefreshing"
-                    /></label>
-                    <label
-                        >Category<select
-                            v-model="productFilters.category"
-                            @change="applyProductFilters"
-                            :disabled="busy || productRefreshing"
-                        >
-                            <option value="">All categories</option>
-                            <option
-                                v-for="category in productFilterCategories"
-                                :key="category"
-                                :value="category"
-                            >
-                                {{ category }}
-                            </option>
-                        </select></label
-                    >
-                    <label
-                        >Sort<select
-                            v-model="productFilters.sort"
-                            @change="applyProductFilters"
-                            :disabled="busy || productRefreshing"
-                        >
-                            <option value="newest">Newest first</option>
-                            <option value="oldest">Oldest first</option>
-                            <option value="title_asc">Name A–Z</option>
-                            <option value="title_desc">Name Z–A</option>
-                        </select></label
-                    >
-                    <label
-                        >Per page<select
-                            v-model.number="productFilters.per_page"
-                            @change="applyProductFilters"
-                            :disabled="busy || productRefreshing"
-                        >
-                            <option
-                                v-if="
-                                    ![25, 50, 100].includes(
-                                        productFilters.per_page
-                                    )
-                                "
-                                :value="productFilters.per_page"
-                            >
-                                {{ productFilters.per_page }}
-                            </option>
-                            <option :value="25">25</option>
-                            <option :value="50">50</option>
-                            <option :value="100">100</option>
-                        </select></label
-                    >
-                    <button
-                        type="submit"
-                        class="button button-navy"
-                        :disabled="busy || productRefreshing"
-                    >
-                        {{
-                            productListLoading ? 'Loading…' : 'Apply filters'
-                        }}</button
-                    ><button
-                        type="button"
-                        class="button button-outline"
-                        :disabled="busy || productRefreshing"
-                        @click="resetProductFilters"
-                    >
-                        Reset
-                    </button>
-                    <p role="status" class="product-results-count">
-                        {{
-                            productListLoading ? 'Updating results… ' : ''
-                        }}Showing {{ productPage.from }}–{{ productPage.to }} of
-                        {{ productPage.filtered_total }} matching products ·
-                        {{ productPage.total }} total in your authorized
-                        catalog.
-                    </p>
-                    <p v-if="productListError" role="alert" class="form-error">
-                        {{ productListError }}
-                    </p>
-                </form>
                 <div
-                    v-else-if="
+                    v-if="
+                        !(section === 'products' && productPage) &&
                         !(section === 'orders' && orderPage) &&
                         !(section === 'users' && userPage) &&
                         !(section === 'offers' && offerPage) &&
@@ -380,6 +290,7 @@
                 <div
                     v-if="
                         !visibleRecords.length &&
+                        !(section === 'products' && productPage) &&
                         !(section === 'orders' && orderPage) &&
                         !(section === 'users' && userPage) &&
                         !(section === 'offers' && offerPage) &&
@@ -422,16 +333,120 @@
                 <AdminTable
                     v-else-if="section === 'products'"
                     caption="Product catalog"
-                    :busy="busy"
+                    :busy="busy || productListLoading || productRefreshing"
+                    :columns="productColumns"
+                    :sort="productTableSort"
+                    resizable-columns
+                    :viewport-height="520"
+                    resizable-height
+                    :empty="!visibleRecords.length"
+                    :empty-text="
+                        hasActiveFilters
+                            ? 'No products match these filters.'
+                            : 'No products in your authorized catalog.'
+                    "
+                    @sort="sortProductColumn"
                     class="workspace-admin-list"
-                    ><template #header>
-                        <tr>
-                            <th scope="col">Product</th>
-                            <th scope="col">Price</th>
-                            <th scope="col">Inventory</th>
-                            <th scope="col">Market</th>
-                            <th scope="col">Actions</th>
-                        </tr>
+                >
+                    <template v-if="productPage" #toolbar>
+                        <form
+                            class="order-search-toolbar"
+                            @submit.prevent="applyProductFilters"
+                        >
+                            <label
+                                >Search products<input
+                                    v-model="productFilters.q"
+                                    type="search"
+                                    maxlength="120"
+                                    placeholder="Product name, SKU, category or merchant"
+                                    :disabled="busy || productRefreshing"
+                            /></label>
+                            <button
+                                type="submit"
+                                class="button button-outline"
+                                :disabled="
+                                    busy ||
+                                    productRefreshing ||
+                                    productListLoading
+                                "
+                            >
+                                Search
+                            </button>
+                            <button
+                                v-if="
+                                    productFilters.q ||
+                                    productFilters.category ||
+                                    productFilters.sort !== 'newest'
+                                "
+                                type="button"
+                                class="button button-outline"
+                                :disabled="busy || productRefreshing"
+                                @click="resetProductFilters"
+                            >
+                                Reset filters
+                            </button>
+                            <p role="status">
+                                {{ productListLoading ? 'Updating… ' : ''
+                                }}{{ productPage.filtered_total }} matching ·
+                                {{ productPage.total }} authorized products
+                            </p>
+                            <p
+                                v-if="productListError"
+                                role="alert"
+                                class="form-error"
+                            >
+                                {{ productListError }}
+                            </p>
+                            <button
+                                v-if="
+                                    productPage.total === 0 &&
+                                    capabilities?.createProducts
+                                "
+                                type="button"
+                                class="button button-navy"
+                                :disabled="
+                                    busy ||
+                                    productRefreshing ||
+                                    productListLoading ||
+                                    !!pendingProductDraft
+                                "
+                                @click="openProduct()"
+                            >
+                                Create your first listing
+                            </button>
+                        </form>
+                    </template>
+                    <template v-if="productPage" #filters>
+                        <div class="order-filter-fields">
+                            <label
+                                >Category<select
+                                    v-model="productFilters.category"
+                                    :disabled="busy || productRefreshing"
+                                    @change="applyProductFilters"
+                                >
+                                    <option value="">All categories</option>
+                                    <option
+                                        v-for="category in productFilterCategories"
+                                        :key="category"
+                                        :value="category"
+                                    >
+                                        {{ category }}
+                                    </option>
+                                </select></label
+                            >
+                            <label
+                                >Sort<select
+                                    v-model="productFilters.sort"
+                                    :disabled="busy || productRefreshing"
+                                    @change="applyProductFilters"
+                                >
+                                    <option value="newest">Newest first</option>
+                                    <option value="oldest">Oldest first</option>
+                                    <option value="title_asc">Name A–Z</option>
+                                    <option value="title_desc">Name Z–A</option>
+                                </select></label
+                            >
+                        </div>
                     </template>
                     <tr v-for="product in visibleRecords" :key="product.id">
                         <th scope="row">
@@ -462,6 +477,7 @@
                                 </div>
                             </div>
                         </th>
+                        <td>{{ dateLabel(product.created_at) }}</td>
                         <td>
                             <strong>{{ formatPrice(product.price) }}</strong
                             ><small v-if="product.wholesale_price > 0"
@@ -504,43 +520,24 @@
                             </div>
                         </td>
                     </tr>
-                    <template v-if="productPage" #footer
-                        ><nav
-                            class="product-pagination"
-                            aria-label="Product catalog pages"
-                        >
-                            <button
-                                type="button"
-                                class="button button-outline"
-                                :disabled="
-                                    productListLoading ||
-                                    productRefreshing ||
-                                    productFiltersPending ||
-                                    busy ||
-                                    productPage.page <= 1
-                                "
-                                @click="changeProductPage(productPage.page - 1)"
-                            >
-                                Previous</button
-                            ><span aria-live="polite"
-                                >Page {{ productPage.page }} of
-                                {{ productPage.last_page }}</span
-                            ><button
-                                type="button"
-                                class="button button-outline"
-                                :disabled="
-                                    productListLoading ||
-                                    productRefreshing ||
-                                    productFiltersPending ||
-                                    busy ||
-                                    productPage.page >= productPage.last_page
-                                "
-                                @click="changeProductPage(productPage.page + 1)"
-                            >
-                                Next
-                            </button>
-                        </nav></template
-                    >
+                    <template v-if="productPage" #footer>
+                        <AdminPagination
+                            :page="productPage.page"
+                            :per-page="productPage.per_page"
+                            :total="productPage.filtered_total"
+                            :last-page="productPage.last_page"
+                            :from="productPage.from"
+                            :to="productPage.to"
+                            :busy="
+                                busy ||
+                                productRefreshing ||
+                                productListLoading ||
+                                productFiltersPending
+                            "
+                            @page="changeProductPage"
+                            @per-page="changeProductPageSize"
+                        />
+                    </template>
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'orders'"
@@ -2711,10 +2708,17 @@ function refreshRecord() {
 }
 const productActions = (product: RecordData) => [
     ...(recordCan('products', product.id, 'update')
-        ? [{ id: 'edit', label: 'Edit product' }]
+        ? [{ id: 'edit', label: 'Edit product', icon: 'edit' }]
         : []),
     ...(recordCan('products', product.id, 'delete')
-        ? [{ id: 'delete', label: 'Delete product', danger: true }]
+        ? [
+              {
+                  id: 'delete',
+                  label: 'Delete product',
+                  danger: true,
+                  icon: 'trash',
+              },
+          ]
         : []),
 ]
 function productAction(product: RecordData, action: string) {
@@ -3793,6 +3797,62 @@ const productFilters = reactive({
     sort: props.productPage?.filters.sort || 'newest',
     per_page: props.productPage?.per_page || 25,
 })
+const productColumns = computed(() => [
+    {
+        key: 'title',
+        label: 'Product',
+        sortable: true,
+        width: 300,
+        minWidth: 200,
+    },
+    {
+        key: 'created_at',
+        label: 'Added',
+        sortable: true,
+        width: 150,
+        minWidth: 120,
+    },
+    { key: 'price', label: 'Price', width: 150, minWidth: 120 },
+    { key: 'inventory', label: 'Inventory', width: 170, minWidth: 130 },
+    { key: 'market', label: 'Market', width: 160, minWidth: 120 },
+    { key: 'actions', label: 'Actions', width: 140, minWidth: 120 },
+])
+const productTableSort = computed(() => ({
+    key: productFilters.sort.startsWith('title_') ? 'title' : 'created_at',
+    direction: (['title_asc', 'oldest'].includes(productFilters.sort)
+        ? 'asc'
+        : 'desc') as 'asc' | 'desc',
+}))
+function productListInteractionBlocked() {
+    return (
+        busy.value ||
+        productRefreshing.value ||
+        productOpen.value ||
+        !!deleteTarget.value
+    )
+}
+function sortProductColumn(sort: { key: string; direction: 'asc' | 'desc' }) {
+    if (
+        productListInteractionBlocked() ||
+        !['title', 'created_at'].includes(sort.key)
+    )
+        return
+    productFilters.sort =
+        sort.key === 'title'
+            ? sort.direction === 'asc'
+                ? 'title_asc'
+                : 'title_desc'
+            : sort.direction === 'asc'
+              ? 'oldest'
+              : 'newest'
+    applyProductFilters()
+}
+function changeProductPageSize(number: number) {
+    if (productListInteractionBlocked() || ![25, 50, 100].includes(number))
+        return
+    productFilters.per_page = number
+    applyProductFilters()
+}
 const productFiltersPending = computed(() =>
     props.productPage
         ? productFilters.q !== props.productPage.filters.q ||

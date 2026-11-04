@@ -34,7 +34,8 @@ func TestWorkspacePromotionsScopedStatusesAndSelection(t *testing.T) {
 	require.EqualValues(t, 1, page.CampaignCounts["disabled"])
 	require.Equal(t, now.Add(time.Minute).Format(time.RFC3339Nano), page.NextStatusChange)
 	require.True(t, page.SelectedCampaign.Scope.All)
-	require.Len(t, page.Products, 1)
+	require.Empty(t, page.Products)
+	require.Len(t, page.Merchants, 1)
 	f.Query = "école merchant"
 	f.Status = "active"
 	f.Page = 999

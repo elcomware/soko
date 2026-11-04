@@ -13,7 +13,7 @@ function setup({ draft, props: extra = {} } = {}) {
     const page = Vue.reactive({ url: '/dashboard?section=products', props: {} })
     let cleanup
     let script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-    script += '\n globalThis.h = { productFilters, productFiltersPending, productListUrl, applyProductFilters, resetProductFilters, changeProductPage, productListLoading, productListError, visibleRecords, openProduct, productForm, productOpen, productDirty, pendingProductDraft, recoverOffpageProduct, checkSavedProduct, freshProduct, replaceWithSavedProduct, productRefreshMessage, saveProduct, openDelete, removeProduct, productReturnUrl, editingProduct, pendingProductDiscard, discardPendingProductDraft };'
+    script += '\n globalThis.h = { productFilters, productFiltersPending, productListUrl, applyProductFilters, resetProductFilters, changeProductPage, productListLoading, productListError, visibleRecords, openProduct, productForm, productOpen, productDirty, pendingProductDraft, recoverOffpageProduct, checkSavedProduct, freshProduct, replaceWithSavedProduct, productRefreshMessage, saveProduct, openDelete, removeProduct, productReturnUrl, editingProduct, pendingProductDiscard, discardPendingProductDraft, sortProductColumn, changeProductPageSize, productColumns, productTableSort };'
     const context = { exports: {}, defineProps: () => props, URL, URLSearchParams,
         setTimeout: (callback, delay) => { timers.push({ callback, delay, cleared: false }); return timers.length }, clearTimeout: id => { if(timers[id-1]) timers[id-1].cleared = true },
         fetch: (url, options) => new Promise(resolve => fetches.push({ url, options, resolve })),
@@ -174,4 +174,25 @@ test('off-page recovery blocks competing edits/deletes/navigation, and unresolve
     h.openProduct()
     assert.equal(h.productOpen.value, true)
     h.cleanup()
+})
+
+test('shared product header sort and pagination map only supported server operations',()=>{
+ const h=setup({props:{productPage:meta('',3)}})
+ h.sortProductColumn({key:'price',direction:'asc'});assert.equal(h.gets.length,0)
+ h.sortProductColumn({key:'title',direction:'asc'});assert.match(h.gets[0][0],/sort=title_asc/);assert.match(h.gets[0][0],/page=1/)
+ assert.equal(h.productTableSort.value.key,'title');assert.equal(h.productTableSort.value.direction,'asc')
+ h.gets[0][2].onFinish();h.changeProductPageSize(50);assert.match(h.gets[1][0],/per_page=50/);assert.match(h.gets[1][0],/page=1/)
+ h.gets[1][2].onFinish();h.sortProductColumn({key:'created_at',direction:'desc'});assert.match(h.gets[2][0],/sort=newest/)
+ assert.equal(h.productColumns.value.filter(c=>c.sortable).length,2);h.cleanup()
+})
+test('shared product sorting/page size cannot mutate or replace an open draft',()=>{
+ const h=setup();h.openProduct(h.props.products[0]);h.productForm.title='Unsaved changes'
+ h.sortProductColumn({key:'title',direction:'desc'});h.changeProductPageSize(100)
+ assert.equal(h.gets.length,0);assert.equal(h.productFilters.sort,'newest');assert.equal(h.productFilters.per_page,25);assert.equal(h.productForm.title,'Unsaved changes');h.cleanup()
+})
+test('Products uses shared table slots and paging even when filtered results are empty',()=>{
+ const table=source.slice(source.indexOf('v-else-if="section === \'products\'"\n                    caption="Product catalog"'),source.indexOf('v-else-if="section === \'orders\'"'))
+ assert.match(table,/:columns="productColumns"/);assert.match(table,/resizable-columns/);assert.match(table,/resizable-height/);assert.match(table,/#filters/);assert.match(table,/<AdminPagination/);assert.doesNotMatch(table,/#header|product-pagination/)
+ assert.match(table,/productPage.total === 0 &&[\s\S]*?capabilities\?\.createProducts/)
+ const h=setup({props:{products:[],productPage:{...meta('absent'),filtered_total:0,from:0,to:0,last_page:1}}});assert.equal(h.visibleRecords.value.length,0);h.resetProductFilters();assert.equal(h.gets.length,1);h.cleanup()
 })

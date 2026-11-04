@@ -64,6 +64,7 @@ func Web() {
 			r.Post("/dashboard/content", controllers.NewContentController().Save)
 			r.Get("/dashboard/promotions", controllers.NewPromotionController().Index)
 			r.Post("/dashboard/promotions", controllers.NewPromotionController().Save)
+			r.Post("/dashboard/promotions/targets", controllers.NewPromotionController().Targets)
 			r.Post("/dashboard/promotions/{id}", controllers.NewPromotionController().Save)
 		})
 	})

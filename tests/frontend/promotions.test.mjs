@@ -21,7 +21,7 @@ function campaignHarness(
         .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
         .replace(/^import[\s\S]*?(?:from\s*)?['"][^'"]+['"]\s*$/gm, '')
     script +=
-        '\n globalThis.harness = { form, edit, reset, resetDraft, busy, error, eligibleProducts, merchants, selectableProducts, targetSearch, targetPanels, targetKey, targetOptions, filteredTargetOptions, selectedTargets, removeTarget, activeTargetKind, editorOpen, dirty, createCampaign, closeEditor, save, currentTime, status, visibleCampaigns, campaignSearch, statusFilter, listLoading, listError, filtersPending, campaignListUrl, applyCampaignFilters, refreshCampaigns, changeCampaignPage, changeCampaignSize, statusSnapshotExpired, campaignCounts, sourceSchedule, scheduleTimestamp, editCampaignData, draftRecovered, pendingCampaignRecovery, retryCampaignRecovery, discardPendingRecovery };'
+        '\n globalThis.harness = { form, edit, reset, resetDraft, busy, error, eligibleProducts, merchants, selectableProducts, targetSearch, targetPanels, targetKey, targetOptions, filteredTargetOptions, selectedTargets, removeTarget, activeTargetKind, editorOpen, dirty, createCampaign, closeEditor, save, currentTime, status, visibleCampaigns, campaignSearch, statusFilter, listLoading, listError, filtersPending, campaignListUrl, applyCampaignFilters, refreshCampaigns, changeCampaignPage, changeCampaignSize, statusSnapshotExpired, campaignCounts, sourceSchedule, scheduleTimestamp, editCampaignData, draftRecovered, pendingCampaignRecovery, retryCampaignRecovery, discardPendingRecovery, loadTargets, targetPage, targetPageSize, changeTargetPage, changeTargetPageSize, currentTargets, targetChoices, targetLoading, targetError, coverageTotal, campaignScope };'
     const mounts = [],
         unmounts = [],
         requests = [],
@@ -36,7 +36,13 @@ function campaignHarness(
     })
     const clockTimers = [],
         recoveries = []
+    const fetches = []
     const context = {
+        AbortController,
+        fetch: (url, options) =>
+            new Promise((resolve, reject) =>
+                fetches.push({ url, options, resolve, reject })
+            ),
         onMounted: (fn) => {
             mounts.push(fn)
         },
@@ -69,7 +75,7 @@ function campaignHarness(
         computed,
         ref,
         defineProps: () => props,
-        document: { getElementById: () => null },
+        document: { getElementById: () => null, querySelector: () => null },
         useMarketplaceForm: () => ({
             busy: ref(false),
             error: ref('old error'),
@@ -95,6 +101,7 @@ function campaignHarness(
         posts,
         timers,
         clockTimers,
+        fetches,
         recoveries,
     }
 }
@@ -645,5 +652,178 @@ test('selected record identity is checked and schedule expiry during a request r
     h.requests[1].options.onFinish()
     await nextTick()
     assert.equal(h.requests.length, 3)
+    h.unmount()
+})
+
+function targetResult(overrides = {}) {
+    const product = {
+        id: 'page-product',
+        title: 'Page product',
+        category: 'Tools',
+        sub_category: 'Hand tools',
+        vendor_id: 'merchant-own',
+    }
+    return {
+        vendor_id: 'merchant-own',
+        products: [product],
+        productPage: {
+            page: 1,
+            per_page: 25,
+            total: 70,
+            filtered_total: 70,
+            last_page: 3,
+            from: 1,
+            to: 25,
+        },
+        categories: [{ category: 'Tools', count: 70 }],
+        subcategories: [
+            { category: 'Tools', sub_category: 'Hand tools', count: 70 },
+        ],
+        selectedProducts: [],
+        preview: { total: 70, products: [product] },
+        ...overrides,
+    }
+}
+function resolveTargets(request, data) {
+    request.resolve({ ok: true, redirected: false, json: async () => data })
+}
+test('remote target pages keep whole-scope coverage and off-page selected labels independently', async () => {
+    const h = campaignHarness(false, [], [], {
+        targetingApi: true,
+        merchants: [],
+    })
+    h.createCampaign()
+    h.form.exclude_product_ids = ['off-page', 'deleted']
+    const pending = h.loadTargets()
+    const saved = {
+        id: 'off-page',
+        title: 'Chosen elsewhere',
+        category: 'Tools',
+        sub_category: '',
+        vendor_id: 'merchant-own',
+    }
+    resolveTargets(
+        h.fetches[0],
+        targetResult({
+            selectedProducts: [
+                { id: 'off-page', status: 'available', product: saved },
+                { id: 'deleted', status: 'unavailable', product: null },
+            ],
+            preview: { total: 68, products: [] },
+        })
+    )
+    await pending
+    assert.equal(h.coverageTotal.value, 68)
+    assert.equal(h.targetOptions('product_ids').length, 1)
+    assert.equal(h.selectedTargets('exclude')[0].label, 'Chosen elsewhere')
+    assert.equal(h.selectedTargets('exclude')[1].unavailable, true)
+    h.form.product_ids.push('page-product')
+    assert.equal(
+        h.coverageTotal.value,
+        null,
+        'changed scope never shows old count as current'
+    )
+    assert.equal(
+        h.targetOptions('product_ids').length,
+        1,
+        'scope changes retain stable visible choices for multi-select'
+    )
+    assert.equal(h.selectedTargets('include')[0].label, 'Page product')
+    h.targetSearch.value = 'no-result'
+    const searched = h.loadTargets()
+    resolveTargets(
+        h.fetches[1],
+        targetResult({
+            products: [],
+            productPage: {
+                page: 1,
+                per_page: 25,
+                total: 70,
+                filtered_total: 0,
+                last_page: 1,
+                from: 0,
+                to: 0,
+            },
+            selectedProducts: [
+                { id: 'off-page', status: 'available', product: saved },
+            ],
+            preview: { total: 68, products: [] },
+        })
+    )
+    await searched
+    assert.equal(h.targetOptions('product_ids').length, 0)
+    assert.equal(
+        h.coverageTotal.value,
+        68,
+        'zero search results do not mean zero campaign coverage'
+    )
+    assert.equal(h.form.exclude_product_ids.length, 2)
+    h.unmount()
+})
+test('stale targeting replies cannot cross merchant, scope, page or closed editor', async () => {
+    const h = campaignHarness(true, [], [], {
+        targetingApi: true,
+        merchants: [],
+    })
+    h.createCampaign()
+    h.form.vendor_id = 'merchant-own'
+    const first = h.loadTargets()
+    h.form.vendor_id = 'different-owner'
+    const second = h.loadTargets()
+    resolveTargets(
+        h.fetches[1],
+        targetResult({
+            vendor_id: 'different-owner',
+            preview: { total: 4, products: [] },
+        })
+    )
+    await second
+    resolveTargets(
+        h.fetches[0],
+        targetResult({ preview: { total: 999, products: [] } })
+    )
+    await first
+    assert.equal(h.coverageTotal.value, 4)
+    assert.equal(h.fetches[0].options.signal.aborted, true)
+    const third = h.loadTargets()
+    h.form.exclude_categories.push('Tools')
+    resolveTargets(
+        h.fetches[2],
+        targetResult({
+            vendor_id: 'different-owner',
+            preview: { total: 1000, products: [] },
+        })
+    )
+    await third
+    assert.equal(h.coverageTotal.value, null)
+    const fourth = h.loadTargets()
+    h.closeEditor()
+    resolveTargets(h.fetches[3], targetResult({ vendor_id: 'different-owner' }))
+    await fourth
+    assert.equal(h.currentTargets.value, null)
+    h.unmount()
+})
+test('target lookup failure retains choices in draft, hides coverage and allows retry', async () => {
+    const h = campaignHarness(false, [], [], {
+        targetingApi: true,
+        merchants: [],
+    })
+    h.createCampaign()
+    h.form.categories = ['Tools']
+    const pending = h.loadTargets()
+    h.fetches[0].reject(new Error('offline'))
+    await pending
+    assert.match(h.targetError.value, /selections are unchanged/)
+    assert.equal(h.coverageTotal.value, null)
+    assert.equal(h.form.categories[0], 'Tools')
+    const retried = h.loadTargets()
+    resolveTargets(h.fetches[1], targetResult())
+    await retried
+    assert.equal(h.coverageTotal.value, 70)
+    h.busy.value = true
+    h.changeTargetPage(2)
+    h.changeTargetPageSize(50)
+    assert.equal(h.targetPage.value, 1)
+    assert.equal(h.targetPageSize.value, 25)
     h.unmount()
 })

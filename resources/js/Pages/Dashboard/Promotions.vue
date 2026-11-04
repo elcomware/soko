@@ -29,6 +29,8 @@ const props = defineProps<{
     products: Target[]
     canManageAll: boolean
     actorId: string
+    targetingApi?: boolean
+    merchants?: { id: string; name: string }[]
     campaignPage?: {
         page: number
         per_page: number
@@ -78,6 +80,7 @@ const sourceSchedule = reactive({
 const draftRecovered = ref(false)
 const pendingCampaignRecovery = ref<Record<string, any> | null>(null)
 const targetSearch = ref('')
+const exceptionsOpen = ref(false)
 const editorOpen = ref(false)
 const savedDraft = ref(JSON.stringify(form))
 const dirty = computed(() => JSON.stringify(form) !== savedDraft.value)
@@ -137,6 +140,7 @@ function closeEditor() {
 }
 
 const merchants = computed(() => {
+    if (props.merchants) return props.merchants
     const owners = new Map<string, string>()
     for (const p of props.products)
         if (p.vendor_id) owners.set(p.vendor_id, p.vendor_name || p.vendor_id)
@@ -161,24 +165,26 @@ const selectableProducts = computed(() =>
     )
 )
 const eligibleProducts = computed(() =>
-    scopedProducts.value.filter((p) => {
-        const sub = JSON.stringify({
-            category: p.category,
-            sub_category: p.sub_category,
-        })
-        if (
-            form.exclude_product_ids.includes(p.id) ||
-            form.exclude_categories.includes(p.category) ||
-            form.exclude_sub_categories.includes(sub)
-        )
-            return false
-        return (
-            form.all ||
-            form.product_ids.includes(p.id) ||
-            form.categories.includes(p.category) ||
-            form.sub_categories.includes(sub)
-        )
-    })
+    props.targetingApi
+        ? currentTargets.value?.preview.products || []
+        : scopedProducts.value.filter((p) => {
+              const sub = JSON.stringify({
+                  category: p.category,
+                  sub_category: p.sub_category,
+              })
+              if (
+                  form.exclude_product_ids.includes(p.id) ||
+                  form.exclude_categories.includes(p.category) ||
+                  form.exclude_sub_categories.includes(sub)
+              )
+                  return false
+              return (
+                  form.all ||
+                  form.product_ids.includes(p.id) ||
+                  form.categories.includes(p.category) ||
+                  form.sub_categories.includes(sub)
+              )
+          })
 )
 const campaignCounts = computed(
     () =>
@@ -191,32 +197,252 @@ const campaignCounts = computed(
         }
 )
 const categories = computed(() =>
-    [
-        ...new Set(
-            scopedProducts.value
-                .map((p) => p.category)
-                .filter((value) => value.trim())
-        ),
-    ].sort()
+    props.targetingApi
+        ? targetChoices.value?.categories.map((item) => item.category) || []
+        : [
+              ...new Set(
+                  scopedProducts.value
+                      .map((p) => p.category)
+                      .filter((value) => value.trim())
+              ),
+          ].sort()
 )
 const subcategories = computed(() =>
-    [
-        ...new Set(
-            scopedProducts.value
-                .filter((p) => p.category.trim() && p.sub_category.trim())
-                .map((p) =>
-                    JSON.stringify({
-                        category: p.category,
-                        sub_category: p.sub_category,
-                    })
-                )
-        ),
-    ].sort()
+    props.targetingApi
+        ? targetChoices.value?.subcategories.map((item) =>
+              JSON.stringify({
+                  category: item.category,
+                  sub_category: item.sub_category,
+              })
+          ) || []
+        : [
+              ...new Set(
+                  scopedProducts.value
+                      .filter((p) => p.category.trim() && p.sub_category.trim())
+                      .map((p) =>
+                          JSON.stringify({
+                              category: p.category,
+                              sub_category: p.sub_category,
+                          })
+                      )
+              ),
+          ].sort()
 )
 const sublabel = (value: string) => {
     const s = JSON.parse(value)
     return `${s.category} / ${s.sub_category}`
 }
+type TargetResponse = {
+    vendor_id: string
+    products: Target[]
+    productPage: {
+        page: number
+        per_page: number
+        total: number
+        filtered_total: number
+        last_page: number
+        from: number
+        to: number
+    }
+    categories: { category: string; count: number }[]
+    subcategories: { category: string; sub_category: string; count: number }[]
+    selectedProducts: {
+        id: string
+        status: 'available' | 'unavailable'
+        product: Target | null
+    }[]
+    preview: { total: number; products: Target[] }
+}
+const targetData = ref<TargetResponse | null>(null)
+const targetLoading = ref(false)
+const targetError = ref('')
+const targetPage = ref(1),
+    targetPageSize = ref(25)
+const acceptedTargetSignature = ref('')
+const acceptedChoiceSignature = ref('')
+const choiceSignature = () =>
+    JSON.stringify([
+        form.vendor_id,
+        targetSearch.value.trim(),
+        targetPage.value,
+        targetPageSize.value,
+    ])
+const targetChoices = computed(() =>
+    acceptedChoiceSignature.value === choiceSignature()
+        ? targetData.value
+        : null
+)
+function campaignScope() {
+    return {
+        all: form.all,
+        product_ids: [...form.product_ids],
+        categories: [...form.categories],
+        sub_categories: form.sub_categories.map((value) => JSON.parse(value)),
+        exclude_product_ids: [...form.exclude_product_ids],
+        exclude_categories: [...form.exclude_categories],
+        exclude_sub_categories: form.exclude_sub_categories.map((value) =>
+            JSON.parse(value)
+        ),
+    }
+}
+const targetSignature = () =>
+    JSON.stringify({
+        vendor_id: form.vendor_id,
+        q: targetSearch.value.trim(),
+        page: targetPage.value,
+        per_page: targetPageSize.value,
+        scope: campaignScope(),
+    })
+const currentTargets = computed(() =>
+    !targetLoading.value &&
+    !targetError.value &&
+    acceptedTargetSignature.value === targetSignature()
+        ? targetData.value
+        : null
+)
+const coverageTotal = computed(() =>
+    props.targetingApi
+        ? (currentTargets.value?.preview.total ?? null)
+        : eligibleProducts.value.length
+)
+let targetController: AbortController | null = null
+let targetTimer: ReturnType<typeof setTimeout> | undefined
+let targetGeneration = 0
+let targetsDisposed = false
+function invalidateTargets() {
+    targetGeneration++
+    targetController?.abort()
+    targetController = null
+    if (targetTimer) clearTimeout(targetTimer)
+}
+function queueTargets(delay = 250) {
+    if (!props.targetingApi) return
+    invalidateTargets()
+    targetError.value = ''
+    targetLoading.value = editorOpen.value
+    if (editorOpen.value) targetTimer = setTimeout(loadTargets, delay)
+}
+async function loadTargets() {
+    if (!props.targetingApi || !editorOpen.value || targetsDisposed) return
+    invalidateTargets()
+    const generation = targetGeneration,
+        signature = targetSignature()
+    const controller = new AbortController()
+    targetController = controller
+    targetLoading.value = true
+    targetError.value = ''
+    try {
+        const csrf =
+            typeof document !== 'undefined'
+                ? document.querySelector<HTMLMetaElement>(
+                      'meta[name="csrf-token"]'
+                  )?.content
+                : undefined
+        const response = await fetch('/dashboard/promotions/targets', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
+            },
+            body: JSON.stringify({
+                vendor_id: form.vendor_id,
+                q: targetSearch.value.trim(),
+                page: targetPage.value,
+                per_page: targetPageSize.value,
+                scope: JSON.stringify(campaignScope()),
+            }),
+        })
+        if (!response.ok || response.redirected)
+            throw new Error('Target lookup failed')
+        const data = (await response.json()) as TargetResponse
+        if (
+            targetsDisposed ||
+            generation !== targetGeneration ||
+            !editorOpen.value ||
+            signature !== targetSignature()
+        )
+            return
+        if (
+            data.vendor_id !== form.vendor_id ||
+            !Array.isArray(data.products) ||
+            !Array.isArray(data.categories) ||
+            !Array.isArray(data.subcategories) ||
+            !Array.isArray(data.selectedProducts) ||
+            !data.productPage ||
+            !data.preview ||
+            !Number.isFinite(data.preview.total)
+        )
+            throw new Error('Invalid target response')
+        targetData.value = data
+        acceptedTargetSignature.value = signature
+        acceptedChoiceSignature.value = choiceSignature()
+    } catch {
+        if (
+            generation === targetGeneration &&
+            !controller.signal.aborted &&
+            !targetsDisposed
+        )
+            targetError.value =
+                'Product choices and coverage could not be loaded. Your selections are unchanged. Retry to check the full catalog.'
+    } finally {
+        if (generation === targetGeneration && !targetsDisposed)
+            targetLoading.value = false
+    }
+}
+function changeTargetPage(page: number) {
+    if (
+        busy.value ||
+        !currentTargets.value ||
+        targetLoading.value ||
+        page < 1 ||
+        page > currentTargets.value.productPage.last_page
+    )
+        return
+    targetPage.value = page
+    queueTargets(0)
+}
+function changeTargetPageSize(size: number) {
+    if (busy.value || ![25, 50, 100].includes(size) || targetLoading.value)
+        return
+    targetPageSize.value = size
+    targetPage.value = 1
+    queueTargets(0)
+}
+watch(
+    [() => form.vendor_id, targetSearch],
+    () => {
+        targetPage.value = 1
+        queueTargets(targetSearch.value ? 350 : 0)
+    },
+    { flush: 'sync' }
+)
+watch(
+    () => JSON.stringify(campaignScope()),
+    () => queueTargets(),
+    { flush: 'sync' }
+)
+watch(
+    editorOpen,
+    (open) => {
+        if (open) queueTargets(0)
+        else {
+            invalidateTargets()
+            targetLoading.value = false
+            targetData.value = null
+            targetError.value = ''
+        }
+    },
+    { flush: 'sync' }
+)
+onBeforeUnmount(() => {
+    targetsDisposed = true
+    invalidateTargets()
+})
 type TargetKind = 'categories' | 'sub_categories' | 'product_ids'
 type TargetBucket = 'include' | 'exclude'
 type TargetKey =
@@ -229,6 +455,10 @@ const targetKinds: { key: TargetKind; label: string }[] = [
     { key: 'sub_categories', label: 'Subcategories' },
     { key: 'product_ids', label: 'Products' },
 ]
+function toggleTargetPanel(bucket: TargetBucket, event: Event) {
+    if (bucket === 'exclude')
+        exceptionsOpen.value = (event.target as HTMLDetailsElement).open
+}
 const targetPanels = computed(() =>
     form.all
         ? (['exclude'] as TargetBucket[])
@@ -243,9 +473,12 @@ const targetKey = (bucket: TargetBucket, kind: TargetKind): TargetKey =>
 function targetOptions(kind: TargetKind) {
     if (kind === 'categories')
         return categories.value.map((value) => {
-            const count = scopedProducts.value.filter(
-                (p) => p.category === value
-            ).length
+            const count = props.targetingApi
+                ? targetChoices.value?.categories.find(
+                      (item) => item.category === value
+                  )?.count || 0
+                : scopedProducts.value.filter((p) => p.category === value)
+                      .length
             return {
                 value,
                 label: value || 'Uncategorized',
@@ -258,7 +491,11 @@ function targetOptions(kind: TargetKind) {
             label: sublabel(value),
             context: 'Category / subcategory',
         }))
-    return scopedProducts.value.map((p) => ({
+    return (
+        props.targetingApi
+            ? targetChoices.value?.products || []
+            : scopedProducts.value
+    ).map((p) => ({
         value: p.id,
         label: p.title,
         context: [p.category, p.sub_category, p.vendor_name]
@@ -267,15 +504,35 @@ function targetOptions(kind: TargetKind) {
     }))
 }
 function filteredTargetOptions(kind: TargetKind) {
+    if (props.targetingApi && kind === 'product_ids') return targetOptions(kind)
     const query = targetSearch.value.trim().toLowerCase()
     return targetOptions(kind).filter((option) =>
         `${option.label} ${option.context}`.toLowerCase().includes(query)
     )
 }
 function selectedTargets(bucket: TargetBucket) {
+    const labels =
+        targetData.value?.vendor_id === form.vendor_id ? targetData.value : null
     return targetKinds.flatMap((kind) => {
         const key = targetKey(bucket, kind.key)
-        const options = targetOptions(kind.key)
+        const options =
+            props.targetingApi && kind.key === 'product_ids'
+                ? [
+                      ...(labels?.selectedProducts || []),
+                      ...(labels?.products || []).map((product) => ({
+                          id: product.id,
+                          status: 'available',
+                          product,
+                      })),
+                  ]
+                      .filter(
+                          (item) => item.status === 'available' && item.product
+                      )
+                      .map((item) => ({
+                          value: item.id,
+                          label: item.product!.title,
+                      }))
+                : targetOptions(kind.key)
         return form[key].map((value) => ({
             key,
             value,
@@ -283,7 +540,9 @@ function selectedTargets(bucket: TargetBucket) {
             label:
                 options.find((option) => option.value === value)?.label ||
                 (kind.key === 'sub_categories' ? sublabel(value) : value),
-            unavailable: !options.some((option) => option.value === value),
+            unavailable:
+                (!props.targetingApi || !!currentTargets.value) &&
+                !options.some((option) => option.value === value),
         }))
     })
 }
@@ -560,6 +819,11 @@ function editCampaignData(c: any) {
         ),
     })
     savedDraft.value = JSON.stringify(form)
+    exceptionsOpen.value =
+        form.exclude_product_ids.length +
+            form.exclude_categories.length +
+            form.exclude_sub_categories.length >
+        0
     targetSearch.value = ''
     for (const bucket of ['include', 'exclude'] as TargetBucket[]) {
         activeTargetKind[bucket] =
@@ -573,6 +837,7 @@ function reset() {
     resetDraft()
 }
 function resetDraft() {
+    exceptionsOpen.value = false
     draftRecovered.value = false
     Object.assign(sourceSchedule, {
         starts_at: '',
@@ -607,17 +872,7 @@ function save(e: Event) {
         error.value = 'Choose a valid start and end time.'
         return
     }
-    const scope = {
-        all: form.all,
-        product_ids: form.product_ids,
-        categories: form.categories,
-        sub_categories: form.sub_categories.map((s) => JSON.parse(s)),
-        exclude_product_ids: form.exclude_product_ids,
-        exclude_categories: form.exclude_categories,
-        exclude_sub_categories: form.exclude_sub_categories.map((s) =>
-            JSON.parse(s)
-        ),
-    }
+    const scope = campaignScope()
     post(
         '/dashboard/promotions' + (form.id ? '/' + form.id : ''),
         {
@@ -703,6 +958,11 @@ function restoreCampaignDraft(saved: Record<string, any>) {
                 (sourceSchedule as any)[key] = schedule[key]
         }
         draftRecovered.value = true
+        exceptionsOpen.value =
+            form.exclude_product_ids.length +
+                form.exclude_categories.length +
+                form.exclude_sub_categories.length >
+            0
         editorOpen.value = true
         pendingCampaignRecovery.value = null
     }
@@ -984,7 +1244,7 @@ function restoreCampaignDraft(saved: Record<string, any>) {
         <AdminDrawer
             :open="editorOpen"
             :title="form.id ? 'Edit campaign' : 'Create campaign'"
-            description="Choose the audience, discount and schedule. Campaigns remain optional and stop automatically."
+            description="Set the offer, choose its audience and schedule."
             :busy="busy"
             :dirty="dirty"
             @close="closeEditor"
@@ -992,20 +1252,6 @@ function restoreCampaignDraft(saved: Record<string, any>) {
             <p v-if="draftRecovered" role="status" class="commerce-small">
                 Unsaved draft restored. Review before saving; newer server
                 changes will require a reload.
-            </p>
-            <p class="commerce-muted">
-                Times use your browser’s local time zone and are stored in UTC.
-                Discounts end automatically at the end time. The best eligible
-                single discount applies after quantity pricing; campaigns do not
-                stack.
-            </p>
-            <p class="commerce-small">
-                Merchant coverage:
-                {{
-                    form.vendor_id
-                        ? 'Only ' + merchantName(form.vendor_id)
-                        : 'All merchants'
-                }}. Category and product selections below narrow this coverage.
             </p>
             <form
                 id="campaign-form"
@@ -1022,261 +1268,395 @@ function restoreCampaignDraft(saved: Record<string, any>) {
                     >
                         {{ error }}
                     </p>
-                    <div v-if="canManageAll" class="merchant-selector">
-                        <label for="campaign-merchant">Merchant coverage</label>
-                        <select id="campaign-merchant" v-model="form.vendor_id">
-                            <option value="">All merchants</option>
-                            <option
-                                v-if="
-                                    form.vendor_id &&
-                                    !merchants.some(
-                                        (m) => m.id === form.vendor_id
-                                    )
-                                "
-                                :value="form.vendor_id"
+                    <section class="campaign-edit-section campaign-identity">
+                        <h3 class="campaign-section-heading">
+                            Campaign details
+                        </h3>
+                        <label for="campaign-name">Campaign name</label
+                        ><input
+                            id="campaign-name"
+                            v-model="form.name"
+                            maxlength="120"
+                            placeholder="e.g. Holiday essentials"
+                            required
+                        />
+                        <div v-if="canManageAll" class="merchant-selector">
+                            <label for="campaign-merchant"
+                                >Merchant coverage</label
                             >
-                                {{ merchantName(form.vendor_id) }}
-                            </option>
-                            <option
-                                v-for="merchant in merchants"
-                                :key="merchant.id"
-                                :value="merchant.id"
+                            <select
+                                id="campaign-merchant"
+                                v-model="form.vendor_id"
                             >
-                                {{ merchant.name }}
-                            </option>
-                        </select>
-                        <p class="commerce-small">
-                            Limit this campaign to one merchant, or manage a
-                            store-wide event. Exclusions still apply.
-                        </p>
-                    </div>
-                    <h3 class="campaign-step">1. Campaign and schedule</h3>
-                    <label for="campaign-name">Campaign name</label
-                    ><input
-                        id="campaign-name"
-                        v-model="form.name"
-                        maxlength="120"
-                        required
-                    />
-                    <div class="campaign-grid">
-                        <div>
-                            <label for="campaign-kind">Discount type</label
-                            ><select id="campaign-kind" v-model="form.kind">
-                                <option value="percentage">Percentage</option>
-                                <option value="fixed">
-                                    Fixed USD amount per unit
+                                <option value="">All merchants</option>
+                                <option
+                                    v-if="
+                                        form.vendor_id &&
+                                        !merchants.some(
+                                            (m) => m.id === form.vendor_id
+                                        )
+                                    "
+                                    :value="form.vendor_id"
+                                >
+                                    {{ merchantName(form.vendor_id) }}
+                                </option>
+                                <option
+                                    v-for="merchant in merchants"
+                                    :key="merchant.id"
+                                    :value="merchant.id"
+                                >
+                                    {{ merchant.name }}
                                 </option>
                             </select>
                         </div>
-                        <div>
-                            <label for="campaign-amount">{{
-                                form.kind === 'percentage'
-                                    ? 'Percentage off'
-                                    : 'USD off per unit'
-                            }}</label
-                            ><input
-                                id="campaign-amount"
-                                v-model.number="form.amount"
-                                type="number"
-                                min="0.01"
-                                :max="
-                                    form.kind === 'percentage'
-                                        ? 100
-                                        : 1000000000000
-                                "
-                                step="0.01"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label for="campaign-start">Starts</label
-                            ><input
-                                id="campaign-start"
-                                v-model="form.starts_at"
-                                type="datetime-local"
-                                step="0.001"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label for="campaign-end">Ends</label
-                            ><input
-                                id="campaign-end"
-                                v-model="form.ends_at"
-                                type="datetime-local"
-                                step="0.001"
-                                :min="form.starts_at"
-                                required
-                            />
-                        </div>
-                    </div>
-                    <label
-                        ><input v-model="form.enabled" type="checkbox" /> Enable
-                        this campaign during its scheduled period</label
-                    >
-                    <label
-                        ><input v-model="form.all" type="checkbox" /> Include
-                        all eligible products</label
-                    >
-                    <h3 class="campaign-step">2. Product coverage</h3>
-                    <label for="campaign-product-search"
-                        >Search coverage choices</label
-                    >
-                    <input
-                        id="campaign-product-search"
-                        v-model="targetSearch"
-                        type="search"
-                        placeholder="Category, subcategory or product"
-                    />
+                    </section>
                     <section
-                        v-for="bucket in targetPanels"
-                        :key="bucket"
-                        class="target-picker"
-                        :aria-labelledby="`target-heading-${bucket}`"
+                        class="campaign-edit-section"
+                        aria-labelledby="campaign-offer-heading"
                     >
-                        <div class="target-heading">
-                            <h3 :id="`target-heading-${bucket}`">
+                        <h3
+                            id="campaign-offer-heading"
+                            class="campaign-section-heading"
+                        >
+                            Offer &amp; timing
+                        </h3>
+                        <div class="campaign-grid">
+                            <div>
+                                <label for="campaign-kind">Discount type</label
+                                ><select id="campaign-kind" v-model="form.kind">
+                                    <option value="percentage">
+                                        Percentage
+                                    </option>
+                                    <option value="fixed">
+                                        Fixed USD amount per unit
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="campaign-amount">{{
+                                    form.kind === 'percentage'
+                                        ? 'Percentage off'
+                                        : 'USD off per unit'
+                                }}</label
+                                ><input
+                                    id="campaign-amount"
+                                    v-model.number="form.amount"
+                                    type="number"
+                                    min="0.01"
+                                    :max="
+                                        form.kind === 'percentage'
+                                            ? 100
+                                            : 1000000000000
+                                    "
+                                    step="0.01"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label for="campaign-start">Starts</label
+                                ><input
+                                    id="campaign-start"
+                                    v-model="form.starts_at"
+                                    type="datetime-local"
+                                    step="0.001"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label for="campaign-end">Ends</label
+                                ><input
+                                    id="campaign-end"
+                                    v-model="form.ends_at"
+                                    type="datetime-local"
+                                    step="0.001"
+                                    :min="form.starts_at"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <p class="campaign-field-hint">
+                            Local time · Ends automatically · Eligible discounts
+                            do not stack.
+                        </p>
+                        <div class="campaign-enable-row">
+                            <label class="campaign-enable-toggle"
+                                ><input
+                                    v-model="form.enabled"
+                                    type="checkbox"
+                                /><span
+                                    ><strong>Enable on schedule</strong
+                                    ><small>{{
+                                        form.enabled
+                                            ? 'Runs only between the start and end times.'
+                                            : 'Save disabled. You can enable it later.'
+                                    }}</small></span
+                                ></label
+                            >
+                            <span
+                                class="campaign-draft-state"
+                                :data-enabled="form.enabled"
+                                >{{
+                                    form.enabled
+                                        ? 'Scheduled to run'
+                                        : 'Disabled'
+                                }}</span
+                            >
+                        </div>
+                    </section>
+                    <section
+                        class="campaign-edit-section"
+                        aria-labelledby="campaign-audience-heading"
+                    >
+                        <h3
+                            id="campaign-audience-heading"
+                            class="campaign-section-heading"
+                        >
+                            Product audience
+                        </h3>
+                        <div class="campaign-audience-options">
+                            <label :class="{ 'is-selected': form.all }"
+                                ><input
+                                    v-model="form.all"
+                                    type="radio"
+                                    :value="true"
+                                    name="campaign-audience"
+                                /><span
+                                    ><strong>All products</strong
+                                    ><small
+                                        >Across the selected merchant
+                                        coverage</small
+                                    ></span
+                                ></label
+                            >
+                            <label :class="{ 'is-selected': !form.all }"
+                                ><input
+                                    v-model="form.all"
+                                    type="radio"
+                                    :value="false"
+                                    name="campaign-audience"
+                                /><span
+                                    ><strong>Selected products</strong
+                                    ><small
+                                        >Choose categories or individual
+                                        items</small
+                                    ></span
+                                ></label
+                            >
+                        </div>
+                        <div
+                            v-if="!form.all || exceptionsOpen"
+                            class="campaign-target-search"
+                        >
+                            <label for="campaign-product-search"
+                                >Find categories or products</label
+                            >
+                            <input
+                                id="campaign-product-search"
+                                maxlength="120"
+                                v-model="targetSearch"
+                                type="search"
+                                placeholder="Category, subcategory or product"
+                            />
+                        </div>
+                        <p
+                            v-if="targetLoading"
+                            role="status"
+                            class="commerce-small"
+                        >
+                            Updating product choices and full-catalog coverage…
+                        </p>
+                        <div v-if="targetError" role="alert" class="form-error">
+                            {{ targetError }}
+                            <button
+                                type="button"
+                                class="button button-outline"
+                                @click="loadTargets"
+                            >
+                                Retry lookup
+                            </button>
+                        </div>
+                        <details
+                            v-for="bucket in targetPanels"
+                            :key="bucket"
+                            :open="bucket === 'include' || exceptionsOpen"
+                            @toggle="toggleTargetPanel(bucket, $event)"
+                            class="target-picker"
+                            :aria-labelledby="`target-heading-${bucket}`"
+                        >
+                            <summary class="target-heading">
+                                <h3 :id="`target-heading-${bucket}`">
+                                    {{
+                                        bucket === 'include'
+                                            ? 'Included products'
+                                            : 'Add exceptions'
+                                    }}
+                                </h3>
+                                <span role="status"
+                                    >{{
+                                        selectedTargets(bucket).length
+                                    }}
+                                    selected</span
+                                >
+                            </summary>
+                            <p
+                                v-if="bucket === 'exclude'"
+                                class="commerce-small"
+                            >
+                                Exceptions override inclusions. Check an option
+                                to exclude it.
+                            </p>
+                            <p v-else class="commerce-small">
+                                Check any category, subcategory or individual
+                                product to include it.
+                            </p>
+                            <div
+                                class="target-kind-switch"
+                                role="group"
+                                :aria-label="`${bucket === 'include' ? 'Include' : 'Exception'} selection type`"
+                            >
+                                <button
+                                    v-for="kind in targetKinds"
+                                    :key="kind.key"
+                                    type="button"
+                                    :aria-pressed="
+                                        activeTargetKind[bucket] === kind.key
+                                    "
+                                    :disabled="busy"
+                                    @click="activeTargetKind[bucket] = kind.key"
+                                >
+                                    {{ kind.label }}
+                                    <span>{{
+                                        form[targetKey(bucket, kind.key)].length
+                                    }}</span>
+                                </button>
+                            </div>
+                            <fieldset class="target-choice-list">
+                                <legend class="target-list-label">
+                                    {{
+                                        targetKinds.find(
+                                            (kind) =>
+                                                kind.key ===
+                                                activeTargetKind[bucket]
+                                        )?.label
+                                    }}
+                                    ·
+                                    {{
+                                        targetingApi && !targetChoices
+                                            ? targetLoading
+                                                ? 'Loading choices…'
+                                                : 'Choices unavailable'
+                                            : `${filteredTargetOptions(activeTargetKind[bucket]).length} choices`
+                                    }}
+                                </legend>
+                                <label
+                                    v-for="option in filteredTargetOptions(
+                                        activeTargetKind[bucket]
+                                    )"
+                                    :key="option.value"
+                                    class="target-choice"
+                                >
+                                    <input
+                                        v-model="
+                                            form[
+                                                targetKey(
+                                                    bucket,
+                                                    activeTargetKind[bucket]
+                                                )
+                                            ]
+                                        "
+                                        type="checkbox"
+                                        :value="option.value"
+                                        :disabled="busy"
+                                    />
+                                    <span
+                                        ><strong>{{ option.label }}</strong
+                                        ><small>{{
+                                            option.context
+                                        }}</small></span
+                                    >
+                                </label>
+                                <p
+                                    v-if="
+                                        (!targetingApi || !!currentTargets) &&
+                                        !filteredTargetOptions(
+                                            activeTargetKind[bucket]
+                                        ).length
+                                    "
+                                    class="target-empty"
+                                >
+                                    No matching choices. Try another search or
+                                    selection type.
+                                </p>
+                            </fieldset>
+                            <AdminPagination
+                                v-if="
+                                    targetingApi &&
+                                    targetChoices &&
+                                    activeTargetKind[bucket] === 'product_ids'
+                                "
+                                :page="targetChoices!.productPage.page"
+                                :per-page="targetChoices!.productPage.per_page"
+                                :total="
+                                    targetChoices!.productPage.filtered_total
+                                "
+                                :last-page="
+                                    targetChoices!.productPage.last_page
+                                "
+                                :from="targetChoices!.productPage.from"
+                                :to="targetChoices!.productPage.to"
+                                :busy="busy || targetLoading"
+                                @page="changeTargetPage"
+                                @per-page="changeTargetPageSize"
+                            />
+                            <div
+                                v-if="selectedTargets(bucket).length"
+                                class="target-selected"
+                                :aria-label="`${bucket === 'include' ? 'Included' : 'Excluded'} selections`"
+                            >
+                                <button
+                                    v-for="item in selectedTargets(bucket)"
+                                    :key="item.key + item.value"
+                                    type="button"
+                                    :disabled="busy"
+                                    :aria-label="`Remove ${bucket === 'include' ? 'inclusion' : 'exception'}: ${item.kind}, ${item.label}`"
+                                    @click="removeTarget(item.key, item.value)"
+                                >
+                                    <span
+                                        ><small>{{ item.kind }}</small
+                                        >{{ item.label
+                                        }}<small v-if="item.unavailable"
+                                            >Not in current merchant
+                                            catalog</small
+                                        ></span
+                                    ><span aria-hidden="true">×</span>
+                                </button>
+                            </div>
+                            <p v-else class="target-empty">
                                 {{
                                     bucket === 'include'
-                                        ? 'Include in campaign'
-                                        : 'Exceptions · keep regular price'
+                                        ? 'Nothing selected yet.'
+                                        : 'No exceptions. All included products can receive this discount.'
                                 }}
-                            </h3>
-                            <span role="status"
-                                >{{
-                                    selectedTargets(bucket).length
-                                }}
-                                selected</span
-                            >
-                        </div>
-                        <p v-if="bucket === 'exclude'" class="commerce-small">
-                            Exceptions override inclusions. Check an option to
-                            exclude it.
-                        </p>
-                        <p v-else class="commerce-small">
-                            Check any category, subcategory or individual
-                            product to include it.
-                        </p>
-                        <div
-                            class="target-kind-switch"
-                            role="group"
-                            :aria-label="`${bucket === 'include' ? 'Include' : 'Exception'} selection type`"
-                        >
-                            <button
-                                v-for="kind in targetKinds"
-                                :key="kind.key"
-                                type="button"
-                                :aria-pressed="
-                                    activeTargetKind[bucket] === kind.key
-                                "
-                                :disabled="busy"
-                                @click="activeTargetKind[bucket] = kind.key"
-                            >
-                                {{ kind.label }}
-                                <span>{{
-                                    form[targetKey(bucket, kind.key)].length
-                                }}</span>
-                            </button>
-                        </div>
-                        <fieldset class="target-choice-list">
-                            <legend class="target-list-label">
-                                {{
-                                    targetKinds.find(
-                                        (kind) =>
-                                            kind.key ===
-                                            activeTargetKind[bucket]
-                                    )?.label
-                                }}
-                                ·
-                                {{
-                                    filteredTargetOptions(
-                                        activeTargetKind[bucket]
-                                    ).length
-                                }}
-                                choices
-                            </legend>
-                            <label
-                                v-for="option in filteredTargetOptions(
-                                    activeTargetKind[bucket]
-                                )"
-                                :key="option.value"
-                                class="target-choice"
-                            >
-                                <input
-                                    v-model="
-                                        form[
-                                            targetKey(
-                                                bucket,
-                                                activeTargetKind[bucket]
-                                            )
-                                        ]
-                                    "
-                                    type="checkbox"
-                                    :value="option.value"
-                                    :disabled="busy"
-                                />
-                                <span
-                                    ><strong>{{ option.label }}</strong
-                                    ><small>{{ option.context }}</small></span
-                                >
-                            </label>
-                            <p
-                                v-if="
-                                    !filteredTargetOptions(
-                                        activeTargetKind[bucket]
-                                    ).length
-                                "
-                                class="target-empty"
-                            >
-                                No matching choices. Try another search or
-                                selection type.
                             </p>
-                        </fieldset>
-                        <div
-                            v-if="selectedTargets(bucket).length"
-                            class="target-selected"
-                            :aria-label="`${bucket === 'include' ? 'Included' : 'Excluded'} selections`"
-                        >
-                            <button
-                                v-for="item in selectedTargets(bucket)"
-                                :key="item.key + item.value"
-                                type="button"
-                                :disabled="busy"
-                                :aria-label="`Remove ${bucket === 'include' ? 'inclusion' : 'exception'}: ${item.kind}, ${item.label}`"
-                                @click="removeTarget(item.key, item.value)"
-                            >
-                                <span
-                                    ><small>{{ item.kind }}</small
-                                    >{{ item.label
-                                    }}<small v-if="item.unavailable"
-                                        >Not in current merchant catalog</small
-                                    ></span
-                                ><span aria-hidden="true">×</span>
-                            </button>
-                        </div>
-                        <p v-else class="target-empty">
-                            {{
-                                bucket === 'include'
-                                    ? 'Nothing selected yet.'
-                                    : 'No exceptions. All included products can receive this discount.'
-                            }}
-                        </p>
+                        </details>
                     </section>
                     <section
                         class="campaign-preview"
                         aria-labelledby="coverage-preview"
                     >
                         <div>
-                            <p class="commerce-eyebrow">Coverage preview</p>
+                            <p class="commerce-eyebrow">Review audience</p>
                             <h3 id="coverage-preview">
-                                {{ eligibleProducts.length }} current products
-                                match
+                                {{
+                                    coverageTotal === null
+                                        ? 'Coverage not yet checked'
+                                        : `${coverageTotal} current ${coverageTotal === 1 ? 'product matches' : 'products match'}`
+                                }}
                             </h3>
                             <p>
-                                Based on selected merchant, inclusions and
-                                exclusions. This is targeting coverage, not a
-                                price quote; stock, quantity tiers and competing
-                                campaigns are checked when pricing.
+                                Across the full selected catalog, after
+                                exceptions. Final pricing is checked at
+                                purchase.
                             </p>
                         </div>
                         <ul v-if="eligibleProducts.length">
@@ -1287,11 +1667,17 @@ function restoreCampaignDraft(saved: Record<string, any>) {
                                 {{ p.title }}<span>{{ p.category }}</span>
                             </li>
                         </ul>
-                        <p v-if="eligibleProducts.length > 6">
-                            And {{ eligibleProducts.length - 6 }} more matching
-                            products.
+                        <p
+                            v-if="
+                                coverageTotal !== null &&
+                                coverageTotal > eligibleProducts.length
+                            "
+                        >
+                            And
+                            {{ (coverageTotal || 0) - eligibleProducts.length }}
+                            more matching products.
                         </p>
-                        <p v-if="!eligibleProducts.length">
+                        <p v-if="coverageTotal === 0">
                             No current products match. A category or
                             all-products campaign can apply to matching products
                             added later.
@@ -1559,6 +1945,7 @@ fieldset:not(.campaign-editor-fields) {
     opacity: 0.75;
 }
 fieldset.target-choice-list {
+    min-height: 120px;
     padding: 0.25rem 0.5rem;
     max-height: 220px;
     overflow-y: auto;
@@ -1639,5 +2026,181 @@ fieldset.target-choice-list {
 .target-choice:focus-within {
     outline: 2px solid var(--soko-amber);
     outline-offset: 2px;
+}
+.campaign-editor-fields {
+    display: grid;
+    gap: 20px;
+}
+.campaign-edit-section {
+    padding: 0 0 20px;
+    border-bottom: 1px solid var(--soko-line);
+    min-width: 0;
+}
+.campaign-section-heading {
+    margin: 0 0 16px;
+    font-size: 15px;
+    font-weight: 750;
+    letter-spacing: -0.015em;
+    color: var(--soko-navy);
+}
+.campaign-identity .merchant-selector {
+    margin-top: 14px;
+}
+.campaign-editor-form label {
+    font-size: 12px;
+    font-weight: 650;
+}
+.campaign-editor-form input:not([type='checkbox']):not([type='radio']),
+.campaign-editor-form select {
+    min-height: 44px;
+    border: 1px solid var(--soko-line);
+    border-radius: 6px;
+    background: var(--soko-surface);
+    color: var(--soko-ink);
+    font: inherit;
+    font-size: 13px;
+    padding: 10px 12px;
+    width: 100%;
+    min-width: 0;
+}
+.campaign-grid {
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.campaign-field-hint {
+    font-size: 11px;
+    color: var(--soko-muted);
+    margin: 12px 0;
+}
+.campaign-enable-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: space-between;
+    background: var(--soko-canvas);
+    padding: 12px;
+    border-radius: 6px;
+}
+.campaign-editor-form .campaign-enable-toggle,
+.campaign-audience-options label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0;
+    cursor: pointer;
+}
+.campaign-enable-toggle > span,
+.campaign-audience-options label > span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+.campaign-enable-toggle small,
+.campaign-audience-options small {
+    font-size: 11px;
+    color: var(--soko-muted);
+    font-weight: 400;
+}
+.campaign-enable-toggle input,
+.campaign-audience-options input {
+    margin: 2px 0 0;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    accent-color: var(--soko-navy);
+}
+.campaign-draft-state {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+.campaign-draft-state[data-enabled='true'] {
+    color: var(--soko-navy);
+}
+.campaign-audience-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+.campaign-audience-options label {
+    border: 1px solid var(--soko-line);
+    border-radius: 6px;
+    padding: 13px;
+}
+.campaign-audience-options label.is-selected {
+    border-color: var(--soko-navy);
+    background: var(--soko-canvas);
+}
+.target-picker {
+    border-top: 1px solid var(--soko-line);
+    padding-top: 12px;
+    margin-top: 14px;
+}
+.target-heading {
+    cursor: pointer;
+    min-height: 44px;
+    list-style: none;
+}
+.target-heading::after {
+    content: '+';
+    margin-left: 2px;
+    font-size: 18px;
+}
+.target-picker[open] > .target-heading::after {
+    content: '−';
+}
+.target-heading h3 {
+    font-size: 13px;
+    margin-right: auto;
+}
+.target-heading:focus-visible {
+    outline: 2px solid var(--soko-focus);
+    outline-offset: 3px;
+}
+.target-kind-switch button {
+    flex: 1;
+    font-size: 12px;
+    border-radius: 5px;
+    min-height: 40px;
+}
+.campaign-preview {
+    margin: 0;
+    padding: 16px;
+    background: var(--soko-canvas);
+    border: 1px solid var(--soko-line);
+    border-radius: 6px;
+}
+.campaign-preview h3 {
+    margin: 4px 0;
+    font-size: 20px;
+    color: var(--soko-navy);
+}
+.campaign-preview p {
+    font-size: 11px;
+    margin: 6px 0;
+    color: var(--soko-muted);
+}
+.campaign-preview li {
+    font-size: 12px;
+    padding: 5px 0;
+}
+.campaign-preview li span {
+    font-size: 11px;
+}
+@media (max-width: 480px) {
+    .campaign-grid,
+    .campaign-audience-options {
+        grid-template-columns: 1fr;
+    }
+    .campaign-enable-row {
+        align-items: flex-start;
+    }
+    .campaign-draft-state {
+        white-space: normal;
+        text-align: right;
+    }
 }
 </style>
