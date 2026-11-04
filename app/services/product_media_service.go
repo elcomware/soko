@@ -15,16 +15,17 @@ import (
 )
 
 type MediaPolicy struct {
-	MaxBytes     int  `json:"max_bytes"`
-	MinWidth     int  `json:"min_width"`
-	MinHeight    int  `json:"min_height"`
-	MaxDimension int  `json:"max_dimension"`
-	AllowRemote  bool `json:"allow_remote"`
-	AllowMockups bool `json:"allow_mockups"`
+	Version      string `json:"version"`
+	MaxBytes     int    `json:"max_bytes"`
+	MinWidth     int    `json:"min_width"`
+	MinHeight    int    `json:"min_height"`
+	MaxDimension int    `json:"max_dimension"`
+	AllowRemote  bool   `json:"allow_remote"`
+	AllowMockups bool   `json:"allow_mockups"`
 }
 
 func DefaultMediaPolicy() MediaPolicy {
-	return MediaPolicy{5 * 1024 * 1024, 600, 600, 4096, true, true}
+	return MediaPolicy{MaxBytes: 5 * 1024 * 1024, MinWidth: 600, MinHeight: 600, MaxDimension: 4096, AllowRemote: true, AllowMockups: true}
 }
 func ValidateMediaPolicy(p MediaPolicy) error {
 	if p.MaxBytes < 1024*100 || p.MaxBytes > 10*1024*1024 || p.MinWidth < 100 || p.MinHeight < 100 || p.MinWidth > 2048 || p.MinHeight > 2048 || p.MaxDimension < p.MinWidth || p.MaxDimension < p.MinHeight || p.MaxDimension > 6000 {

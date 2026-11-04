@@ -7,7 +7,6 @@ import (
 	"elcomware/app/services"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/goravel/framework/contracts/http"
 	inertia "github.com/goravel/inertia/facades"
@@ -198,12 +197,14 @@ func (c *MediaController) Policy(ctx http.Context) http.Response {
 	if err := services.ValidateMediaPolicy(req); err != nil {
 		return mediaError(ctx, 422, err.Error())
 	}
-	b, _ := json.Marshal(req)
-	var row models.StorefrontContent
-	if err := facades.Orm().Query().UpdateOrCreate(&row, models.StorefrontContent{ID: "media-policy"}, map[string]any{"content_json": string(b)}); err != nil {
-		return mediaError(ctx, 503, fmt.Sprint("Media policy could not be saved."))
+	saved, err := services.SaveMediaPolicy(req)
+	if errors.Is(err, services.ErrMediaPolicyConflict) {
+		return mediaError(ctx, 409, err.Error())
 	}
-	return ctx.Response().Json(200, map[string]any{"policy": req})
+	if err != nil {
+		return mediaError(ctx, 503, "Media policy could not be saved.")
+	}
+	return ctx.Response().Json(200, map[string]any{"policy": saved})
 }
 
 // Show keeps unreferenced drafts private. Product references are the publication boundary.

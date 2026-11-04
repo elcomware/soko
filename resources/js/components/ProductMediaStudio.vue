@@ -474,73 +474,92 @@
                 Applies to new uploads and new or edited image links. Existing
                 images are retained.
             </p>
-            <div class="form-row">
-                <div class="soko-field">
-                    <label :for="`${id}-max`">Maximum upload MB</label
-                    ><input
-                        :id="`${id}-max`"
-                        type="number"
-                        min="0.1"
-                        max="10"
-                        step="0.1"
-                        :value="policy.max_bytes / 1048576"
-                        @input="
-                            policy.max_bytes = Math.round(
-                                Number(
-                                    ($event.target as HTMLInputElement).value
-                                ) * 1048576
-                            )
-                        "
-                    />
-                </div>
-                <div class="soko-field">
-                    <label :for="`${id}-dimension`"
-                        >Maximum dimension (px)</label
-                    ><input
-                        :id="`${id}-dimension`"
-                        type="number"
-                        v-model.number="policy.max_dimension"
-                        min="100"
-                        max="6000"
-                    />
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="soko-field">
-                    <label :for="`${id}-width`">Minimum width (px)</label
-                    ><input
-                        :id="`${id}-width`"
-                        type="number"
-                        v-model.number="policy.min_width"
-                        min="100"
-                        max="2048"
-                    />
-                </div>
-                <div class="soko-field">
-                    <label :for="`${id}-height`">Minimum height (px)</label
-                    ><input
-                        :id="`${id}-height`"
-                        type="number"
-                        v-model.number="policy.min_height"
-                        min="100"
-                        max="2048"
-                    />
-                </div>
-            </div>
-            <label class="media-toggle"
-                ><input type="checkbox" v-model="policy.allow_remote" />Allow
-                HTTPS image links</label
-            ><label class="media-toggle"
-                ><input type="checkbox" v-model="policy.allow_mockups" />Allow
-                illustrative mockups</label
+            <fieldset
+                class="media-policy-fields"
+                :disabled="busy || loading"
+                aria-label="Image policy settings"
             >
+                <div class="form-row">
+                    <div class="soko-field">
+                        <label :for="`${id}-max`">Maximum upload MB</label
+                        ><input
+                            :id="`${id}-max`"
+                            type="number"
+                            min="0.1"
+                            max="10"
+                            step="0.1"
+                            :value="policy.max_bytes / 1048576"
+                            @input="
+                                policy.max_bytes = Math.round(
+                                    Number(
+                                        ($event.target as HTMLInputElement)
+                                            .value
+                                    ) * 1048576
+                                )
+                            "
+                        />
+                    </div>
+                    <div class="soko-field">
+                        <label :for="`${id}-dimension`"
+                            >Maximum dimension (px)</label
+                        ><input
+                            :id="`${id}-dimension`"
+                            type="number"
+                            v-model.number="policy.max_dimension"
+                            min="100"
+                            max="6000"
+                        />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="soko-field">
+                        <label :for="`${id}-width`">Minimum width (px)</label
+                        ><input
+                            :id="`${id}-width`"
+                            type="number"
+                            v-model.number="policy.min_width"
+                            min="100"
+                            max="2048"
+                        />
+                    </div>
+                    <div class="soko-field">
+                        <label :for="`${id}-height`">Minimum height (px)</label
+                        ><input
+                            :id="`${id}-height`"
+                            type="number"
+                            v-model.number="policy.min_height"
+                            min="100"
+                            max="2048"
+                        />
+                    </div>
+                </div>
+                <label class="media-toggle"
+                    ><input
+                        type="checkbox"
+                        v-model="policy.allow_remote"
+                    />Allow HTTPS image links</label
+                ><label class="media-toggle"
+                    ><input
+                        type="checkbox"
+                        v-model="policy.allow_mockups"
+                    />Allow illustrative mockups</label
+                >
+                <button
+                    type="button"
+                    class="button button-navy"
+                    :disabled="busy"
+                    @click="savePolicy"
+                >
+                    Save image policy
+                </button>
+            </fieldset>
             <button
                 type="button"
-                class="button button-navy"
-                :disabled="busy"
-                @click="savePolicy"
+                class="button button-secondary"
+                :disabled="busy || loading"
+                @click="loadLibrary(1, true)"
             >
-                Save image policy
+                Discard edits and reload current policy
             </button>
         </details>
     </fieldset>
@@ -620,6 +639,7 @@ const assets = ref<Asset[]>([]),
     notice = ref(''),
     canManagePolicy = ref(false)
 const policy = reactive({
+    version: '',
     max_bytes: 5242880,
     min_width: 600,
     min_height: 600,
@@ -811,13 +831,29 @@ function addGallery(url: string) {
 }
 async function savePolicy() {
     await work(async () => {
-        const data = await api('/dashboard/media/policy', { ...policy })
-        Object.assign(policy, data.policy)
-        notice.value = 'Image policy saved.'
+        const submitted = { ...policy }
+        const data = await api('/dashboard/media/policy', submitted)
+        if (JSON.stringify(policy) === JSON.stringify(submitted)) {
+            Object.assign(policy, data.policy)
+            notice.value = 'Image policy saved.'
+        } else {
+            policy.version = data.policy.version
+            notice.value =
+                'Submitted policy saved. Your later edits are still here and have not been saved.'
+        }
     })
 }
 </script>
 <style scoped>
+.media-policy-fields {
+    border: 0;
+    padding: 0;
+    margin: 0 0 1rem;
+    min-width: 0;
+}
+.media-policy-fields:disabled {
+    opacity: 0.7;
+}
 .media-drawer-preview {
     min-height: 180px;
     display: grid;

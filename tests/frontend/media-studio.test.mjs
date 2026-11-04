@@ -18,7 +18,7 @@ function mediaHarness(props = {}) {
         .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
         .replace(/^import .*$/gm, '')
     script +=
-        '\n globalThis.harness = { customizeCopy, mockup, mockupPanel, busy, error, notice, previewAsset, previewPanel, activeView, mediaViews, loadLibrary, clearFilters, search, kind, policy, api, canCreate, canManagePolicy, ready, previewOpen, selectedAsset, previewFailed, previewAttempt, retryPreview };'
+        '\n globalThis.harness = { customizeCopy, mockup, mockupPanel, busy, error, notice, previewAsset, previewPanel, activeView, mediaViews, loadLibrary, clearFilters, search, kind, policy, api, canCreate, canManagePolicy, ready, previewOpen, selectedAsset, previewFailed, previewAttempt, retryPreview, savePolicy };'
     const requests = [],
         events = [],
         emissions = []
@@ -238,4 +238,48 @@ test('failed preview can reload without modifying or deleting the asset', async 
     assert.equal(h.previewAttempt.value, 1)
     assert.equal(h.selectedAsset.value.id, 'image')
     assert.equal(h.requests.length, 0)
+})
+
+test('policy save acknowledges a snapshot without erasing later programmatic edits', async () => {
+    const h = mediaHarness()
+    h.policy.version = 'v1'
+    h.policy.min_width = 700
+    const pending = h.savePolicy()
+    assert.equal(h.busy.value, true)
+    assert.match(
+        h.source,
+        /class="media-policy-fields"[\s\S]*?:disabled="busy \|\| loading"/
+    )
+    const sent = JSON.parse(h.requests[0].options.body)
+    assert.equal(sent.version, 'v1')
+    assert.equal(sent.min_width, 700)
+    h.policy.min_width = 800
+    h.requests[0].resolve({
+        ok: true,
+        json: async () => ({ policy: { ...sent, version: 'v2' } }),
+    })
+    await pending
+    assert.equal(h.policy.min_width, 800)
+    assert.equal(h.policy.version, 'v2')
+    assert.equal(h.busy.value, false)
+    assert.match(h.notice.value, /later edits/)
+})
+
+test('stale policy conflict preserves unsaved fields and version for explicit reload', async () => {
+    const h = mediaHarness()
+    h.policy.version = 'old'
+    h.policy.min_width = 800
+    const pending = h.savePolicy()
+    h.requests[0].resolve({
+        ok: false,
+        status: 409,
+        json: async () => ({
+            error: 'Image policy changed. Reload the current policy.',
+        }),
+    })
+    await pending
+    assert.equal(h.policy.min_width, 800)
+    assert.equal(h.policy.version, 'old')
+    assert.equal(h.busy.value, false)
+    assert.match(h.error.value, /Reload/)
 })

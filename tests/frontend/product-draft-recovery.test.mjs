@@ -33,10 +33,10 @@ function harness(restored, authorized = true) {
     const context = {
         exports: {},
         defineProps: () => props,
-        URL,
+        URL, URLSearchParams, setTimeout, clearTimeout,
         require: (name) =>
             name === 'vue'
-                ? Vue
+                ? { ...Vue, onBeforeUnmount: () => {} }
                 : name === '@inertiajs/vue3'
                   ? {
                         usePage: () => ({
@@ -144,6 +144,6 @@ test('validation/server errors keep product draft; successful save clears recove
     assert.equal(h.saved.at(-1)[0], null)
     assert.match(
         source,
-        /<fieldset class="product-editor-fields" :disabled="busy">/
+        /<fieldset\s+class="product-editor-fields"\s+:disabled="busy \|\| productRefreshing"/
     )
 })

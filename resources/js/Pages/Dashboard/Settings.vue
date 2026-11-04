@@ -1090,6 +1090,12 @@ for (const profile of props.profiles) {
     flex-wrap: wrap;
     color: var(--soko-navy);
 }
+.brand-preview strong,
+.brand-preview small {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
 .brand-preview strong {
     font: 800 24px var(--soko-font-display);
 }
@@ -1097,6 +1103,7 @@ for (const profile of props.profiles) {
     color: var(--soko-muted);
 }
 .brand-preview-mark {
+    flex-shrink: 0;
     display: grid;
     place-items: center;
     background: var(--soko-amber);

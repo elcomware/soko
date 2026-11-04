@@ -8,6 +8,7 @@ import (
 	"elcomware/app/services"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	frameworktesting "github.com/goravel/framework/testing"
 	"github.com/stretchr/testify/require"
@@ -255,4 +256,78 @@ func TestMediaMockupRecipeIsOwnerScoped(t *testing.T) {
 	resp, err = tc.Http(t).WithSession(map[string]any{"user_id": owner.ID}).Get("/dashboard/media/recipe-photo/recipe")
 	require.NoError(t, err)
 	resp.AssertNotFound()
+}
+
+func TestMediaPolicyRejectsStaleAdministrators(t *testing.T) {
+	_, _ = facades.Orm().Query().Where("id = ?", "media-policy").Delete(&models.StorefrontContent{})
+	t.Cleanup(func() {
+		_, _ = facades.Orm().Query().Where("id = ?", "media-policy").Delete(&models.StorefrontContent{})
+	})
+	admin := models.User{ID: "policy-cas-admin", Email: "policy-cas@example.test", Role: models.RoleAdmin}
+	require.NoError(t, facades.Orm().Query().Create(&admin))
+	t.Cleanup(func() { _, _ = facades.Orm().Query().Where("id = ?", admin.ID).Delete(&models.User{}) })
+	tc := &frameworktesting.TestCase{}
+	original := services.LoadMediaPolicy()
+	save := func(p services.MediaPolicy, intStatus int) {
+		raw, _ := json.Marshal(p)
+		resp, err := tc.Http(t).WithHeaders(map[string]string{"Content-Type": "application/json", "Sec-Fetch-Site": "same-origin"}).WithSession(map[string]any{"user_id": admin.ID}).Post("/dashboard/media/policy", strings.NewReader(string(raw)))
+		require.NoError(t, err)
+		resp.AssertStatus(intStatus)
+	}
+	first := original
+	first.MinWidth = 700
+	save(first, 200)
+	stale := original
+	stale.MinWidth = 800
+	save(stale, 409)
+	require.Equal(t, 700, services.LoadMediaPolicy().MinWidth)
+	fresh := services.LoadMediaPolicy()
+	next := fresh
+	next.MinHeight = 700
+	save(next, 200)
+	fresh.MaxDimension = 3000
+	save(fresh, 409)
+	require.Equal(t, 700, services.LoadMediaPolicy().MinHeight)
+	require.Equal(t, 4096, services.LoadMediaPolicy().MaxDimension)
+}
+
+func TestMediaPolicyConcurrentCompareAndSwapAndLegacyRead(t *testing.T) {
+	_, _ = facades.Orm().Query().Where("id = ?", "media-policy").Delete(&models.StorefrontContent{})
+	t.Cleanup(func() {
+		_, _ = facades.Orm().Query().Where("id = ?", "media-policy").Delete(&models.StorefrontContent{})
+	})
+	// Existing deployments have no version property. Reads assign a stable revision.
+	raw := `{"max_bytes":5242880,"min_width":600,"min_height":600,"max_dimension":4096,"allow_remote":true,"allow_mockups":true}`
+	require.NoError(t, facades.Orm().Query().Create(&models.StorefrontContent{ID: "media-policy", ContentJSON: raw}))
+	current := services.LoadMediaPolicy()
+	require.NotEmpty(t, current.Version)
+	require.Equal(t, current.Version, services.LoadMediaPolicy().Version)
+	_, err := services.SaveMediaPolicy(services.DefaultMediaPolicy())
+	require.ErrorIs(t, err, services.ErrMediaPolicyConflict)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, width := range []int{700, 800} {
+		go func(width int) {
+			<-start
+			p := current
+			p.MinWidth = width
+			_, err := services.SaveMediaPolicy(p)
+			results <- err
+		}(width)
+	}
+	close(start)
+	success, conflict := 0, 0
+	for range 2 {
+		err := <-results
+		if err == nil {
+			success++
+		} else if errors.Is(err, services.ErrMediaPolicyConflict) {
+			conflict++
+		} else {
+			t.Fatalf("unexpected write error: %v", err)
+		}
+	}
+	require.Equal(t, 1, success)
+	require.Equal(t, 1, conflict)
+	require.NotEqual(t, current.Version, services.LoadMediaPolicy().Version)
 }

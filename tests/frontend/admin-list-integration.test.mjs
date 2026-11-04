@@ -9,7 +9,7 @@ const source = readFileSync(
     new URL('../../resources/js/Pages/Dashboard/Index.vue', import.meta.url),
     'utf8'
 )
-function harness(grants, navigation = []) {
+function harness(grants, navigation = [], initial = {}) {
     const requests = []
     const reloads = []
     const props = {
@@ -21,22 +21,25 @@ function harness(grants, navigation = []) {
         regions: [],
         recordCapabilities: { products: grants },
         capabilities: { readProducts: true, createProducts: false },
+        ...initial,
     }
     let script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
     script +=
-        '\n globalThis.harness = { productActions, productAction, productOpen, deleteTarget, busy, productForm, productDirty, openProduct, closeProduct, operationActions, openRecord, detailRecord, detailKind, pendingOperation, prepareOperation, confirmOperation, accessSettingsHref, quoteForm, quoteDirty, openQuote, pendingQuote, formError, refreshRecord };'
+        '\n globalThis.harness = { productActions, productAction, productOpen, deleteTarget, busy, productForm, productDirty, openProduct, closeProduct, operationActions, openRecord, detailRecord, detailKind, pendingOperation, prepareOperation, confirmOperation, accessSettingsHref, quoteForm, quoteDirty, openQuote, pendingQuote, formError, refreshRecord, visibleRecords, accountRole, accountVerification, accountRoles, search, hasActiveFilters, clearRecordFilters, activeNavigation, recordStatus, statusOptions };'
     const context = {
         exports: {},
         defineProps: () => props,
         URL,
+        URLSearchParams,
+        setTimeout, clearTimeout,
         require: (name) =>
             name === 'vue'
-                ? Vue
+                ? { ...Vue, onBeforeUnmount: () => {} }
                 : name === '@inertiajs/vue3'
                   ? {
                         useRemember: data => Vue.reactive(data),
                         usePage: () => ({
-                            url: '/dashboard?section=products',
+                            url: '/dashboard?section=' + (initial.section || 'products'),
                             props: { workspaceNavigation: navigation },
                         }),
                         router: { post: (...args) => requests.push(args), reload: options => reloads.push(options), restore: () => undefined, remember: () => {} },
@@ -207,4 +210,75 @@ test('quote award posts reviewed version, keeps snapshot on conflict, and requir
 
 test('whole-order cancellation disclosure includes unseen supplier lines', () => {
     assert.match(source, /entire order, including any supplier lines you cannot see/)
+})
+
+test('Accounts filters intersect role, verification and country search without adding mutation actions', () => {
+    const h = harness({}, [], { section: 'users', capabilities: { manageUsers: true }, users: [
+        { id: 'one', name: 'Alice', email: 'a@example.com', role: 'merchant', verified: true, country: 'Kenya' },
+        { id: 'two', name: 'Bob', email: 'b@example.com', role: 'merchant', verified: false, country: 'Kenya' },
+        { id: 'three', name: 'Carol', email: 'c@example.com', role: 'buyer', verified: true, country: 'Ghana' },
+    ] })
+    assert.equal(h.activeNavigation.value.label, 'Accounts')
+    assert.equal(h.visibleRecords.value.length, 3)
+    h.accountRole.value = 'merchant'
+    h.accountVerification.value = 'verified'
+    assert.equal(h.visibleRecords.value.length, 1)
+    assert.equal(h.visibleRecords.value[0].id, 'one')
+    h.search.value = 'ghana'
+    assert.equal(h.visibleRecords.value.length, 0)
+    assert.equal(h.hasActiveFilters.value, true)
+    h.clearRecordFilters()
+    assert.equal(h.visibleRecords.value.length, 3)
+    assert.equal(h.hasActiveFilters.value, false)
+    h.search.value = 'kenya'
+    assert.equal(h.visibleRecords.value.length, 2)
+    h.search.value = 'verified'
+    assert.equal(h.visibleRecords.value.length, 2, 'verified search must not also match unverified')
+    h.search.value = 'unverified'
+    assert.equal(h.visibleRecords.value.length, 1)
+    assert.equal(h.visibleRecords.value[0].id, 'two')
+    assert.equal(h.operationActions('users', h.visibleRecords.value[0]).length, 1)
+})
+test('status-only filter is an active filter, and clear resets it', () => {
+    const h = harness({}, [], { section: 'offers', capabilities: { readOffers: true }, offers: [{ id: 'p', status: 'pending' }] })
+    h.recordStatus.value = 'declined'
+    assert.equal(h.visibleRecords.value.length, 0)
+    assert.equal(h.hasActiveFilters.value, true)
+    h.clearRecordFilters()
+    assert.equal(h.visibleRecords.value.length, 1)
+    assert.equal(h.hasActiveFilters.value, false)
+    assert.match(source, /No records match your current filters/)
+})
+test('first-column identities open read-only detail entry points with contextual names and touch-sized controls', () => {
+    for (const [record, kind] of [['rfq', 'rfqs'], ['offer', 'offers'], ['user', 'users']]) {
+        const start = source.indexOf(`<tr v-for="${record} in visibleRecords"`)
+        const header = source.slice(start, source.indexOf('</th>', start))
+        assert.match(header, /class="operation-identity"/)
+        assert.ok(header.includes(`openRecord('${kind}', ${record})`))
+        assert.match(header, /:aria-label=/)
+        assert.match(header, /type="button"/)
+    }
+    assert.match(source, /\.workspace-search \.icon-button \{\s*min-height: 44px;\s*min-width: 44px;/)
+})
+
+test('selected status and role remain visible after last matching record changes until filters reset', () => {
+    const offers = Vue.reactive([{ id: 'one', status: 'pending' }])
+    const h = harness({}, [], { section: 'offers', capabilities: { readOffers: true }, offers })
+    h.recordStatus.value = 'pending'
+    assert.ok(h.statusOptions.value.includes('pending'))
+    offers[0].status = 'accepted'
+    assert.equal(h.visibleRecords.value.length, 0)
+    assert.ok(h.statusOptions.value.includes('pending'))
+    assert.ok(h.statusOptions.value.includes('accepted'))
+    h.clearRecordFilters()
+    assert.equal(h.statusOptions.value.includes('pending'), false)
+    const users = Vue.reactive([{ id: 'a', role: 'merchant', verified: true }])
+    const accounts = harness({}, [], { section: 'users', capabilities: { manageUsers: true }, users })
+    accounts.accountRole.value = 'merchant'
+    assert.ok(accounts.accountRoles.value.includes('merchant'))
+    users[0].role = 'buyer'
+    assert.equal(accounts.visibleRecords.value.length, 0)
+    assert.ok(accounts.accountRoles.value.includes('merchant'))
+    accounts.clearRecordFilters()
+    assert.equal(accounts.accountRoles.value.includes('merchant'), false)
 })

@@ -273,3 +273,13 @@ test('settings recovery scopes actor and target and restores only authorized per
     h.props.canPermissions = false
     assert.equal(access.allowed(), false)
 })
+
+test('brand preview wraps maximum-length unbroken name and tagline without shrinking the mark', () => {
+    const source = readFileSync(new URL('../../resources/js/Pages/Dashboard/Settings.vue', import.meta.url), 'utf8')
+    const wrapping = source.match(/\.brand-preview strong,\s*\.brand-preview small\s*\{([^}]+)\}/)?.[1]
+    assert.ok(wrapping, 'both editable preview text elements share overflow protection')
+    assert.match(wrapping, /min-width:\s*0/)
+    assert.match(wrapping, /max-width:\s*100%/)
+    assert.match(wrapping, /overflow-wrap:\s*anywhere/)
+    assert.match(source, /\.brand-preview-mark\s*\{[^}]*flex-shrink:\s*0/)
+})

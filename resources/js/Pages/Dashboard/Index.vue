@@ -19,6 +19,12 @@
                         ['overview', 'products'].includes(section)
                     "
                     class="button button-navy"
+                    :disabled="
+                        busy ||
+                        productListLoading ||
+                        productRefreshing ||
+                        !!pendingProductDraft
+                    "
                     @click="openProduct()"
                 >
                     <SokoIcon name="box" />Create listing
@@ -149,7 +155,98 @@
                 >
             </section>
             <template v-else>
-                <div class="workspace-toolbar">
+                <form
+                    v-if="section === 'products' && productPage"
+                    class="product-list-toolbar"
+                    @submit.prevent="applyProductFilters"
+                    :aria-busy="productListLoading"
+                >
+                    <label class="product-query"
+                        >Search products<input
+                            v-model="productFilters.q"
+                            type="search"
+                            maxlength="120"
+                            placeholder="Product name, SKU, category or merchant"
+                            :disabled="busy || productRefreshing"
+                    /></label>
+                    <label
+                        >Category<select
+                            v-model="productFilters.category"
+                            @change="applyProductFilters"
+                            :disabled="busy || productRefreshing"
+                        >
+                            <option value="">All categories</option>
+                            <option
+                                v-for="category in productFilterCategories"
+                                :key="category"
+                                :value="category"
+                            >
+                                {{ category }}
+                            </option>
+                        </select></label
+                    >
+                    <label
+                        >Sort<select
+                            v-model="productFilters.sort"
+                            @change="applyProductFilters"
+                            :disabled="busy || productRefreshing"
+                        >
+                            <option value="newest">Newest first</option>
+                            <option value="oldest">Oldest first</option>
+                            <option value="title_asc">Name A–Z</option>
+                            <option value="title_desc">Name Z–A</option>
+                        </select></label
+                    >
+                    <label
+                        >Per page<select
+                            v-model.number="productFilters.per_page"
+                            @change="applyProductFilters"
+                            :disabled="busy || productRefreshing"
+                        >
+                            <option
+                                v-if="
+                                    ![25, 50, 100].includes(
+                                        productFilters.per_page
+                                    )
+                                "
+                                :value="productFilters.per_page"
+                            >
+                                {{ productFilters.per_page }}
+                            </option>
+                            <option :value="25">25</option>
+                            <option :value="50">50</option>
+                            <option :value="100">100</option>
+                        </select></label
+                    >
+                    <button
+                        type="submit"
+                        class="button button-navy"
+                        :disabled="busy || productRefreshing"
+                    >
+                        {{
+                            productListLoading ? 'Loading…' : 'Apply filters'
+                        }}</button
+                    ><button
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy || productRefreshing"
+                        @click="resetProductFilters"
+                    >
+                        Reset
+                    </button>
+                    <p role="status" class="product-results-count">
+                        {{
+                            productListLoading ? 'Updating results… ' : ''
+                        }}Showing {{ productPage.from }}–{{ productPage.to }} of
+                        {{ productPage.filtered_total }} matching products ·
+                        {{ productPage.total }} total in your authorized
+                        catalog.
+                    </p>
+                    <p v-if="productListError" role="alert" class="form-error">
+                        {{ productListError }}
+                    </p>
+                </form>
+                <div v-else class="workspace-toolbar">
                     <label class="workspace-search"
                         ><SokoIcon name="search" /><span class="sr-only"
                             >Search
@@ -180,10 +277,96 @@
                             </option>
                         </select></label
                     >
+                    <template v-if="section === 'users'">
+                        <label class="operation-status-filter"
+                            >Role<select v-model="accountRole">
+                                <option value="all">All roles</option>
+                                <option
+                                    v-for="role in accountRoles"
+                                    :key="role"
+                                    :value="role"
+                                >
+                                    {{ humanize(role) }}
+                                </option>
+                            </select></label
+                        >
+                        <label class="operation-status-filter"
+                            >Verification<select v-model="accountVerification">
+                                <option value="all">All accounts</option>
+                                <option value="verified">Verified</option>
+                                <option value="unverified">Unverified</option>
+                            </select></label
+                        >
+                    </template>
+                    <button
+                        v-if="hasActiveFilters"
+                        type="button"
+                        class="admin-view-link"
+                        @click="clearRecordFilters"
+                    >
+                        Clear filters
+                    </button>
                     <p role="status">
                         {{ visibleRecords.length }}
                         {{ visibleRecords.length === 1 ? 'record' : 'records'
-                        }}<span v-if="search"> found</span>
+                        }}<span v-if="hasActiveFilters">
+                            matched out of {{ records.length }}</span
+                        >
+                    </p>
+                </div>
+                <div
+                    v-if="section === 'products' && pendingProductDraft"
+                    class="product-recovery-banner"
+                    role="status"
+                >
+                    <p>
+                        An unsaved product draft is outside this page. It has
+                        not been discarded. Check current access to reopen it.
+                    </p>
+                    <button
+                        type="button"
+                        class="button button-outline"
+                        :disabled="productRefreshing || busy"
+                        @click="recoverOffpageProduct"
+                    >
+                        {{
+                            productRefreshing
+                                ? 'Checking…'
+                                : 'Reopen saved draft'
+                        }}
+                    </button>
+                    <button
+                        v-if="!pendingProductDiscard"
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy || productRefreshing"
+                        @click="pendingProductDiscard = true"
+                    >
+                        Discard saved draft…
+                    </button>
+                    <div v-else>
+                        <p>
+                            Discard this unsaved draft? The saved product will
+                            not change.
+                        </p>
+                        <button
+                            type="button"
+                            class="button button-outline"
+                            :disabled="busy || productRefreshing"
+                            @click="pendingProductDiscard = false"
+                        >
+                            Keep draft</button
+                        ><button
+                            type="button"
+                            class="button button-outline"
+                            :disabled="busy || productRefreshing"
+                            @click="discardPendingProductDraft"
+                        >
+                            Discard unsaved draft
+                        </button>
+                    </div>
+                    <p v-if="productRefreshMessage">
+                        {{ productRefreshMessage }}
                     </p>
                 </div>
                 <div
@@ -193,20 +376,20 @@
                     <SokoIcon :name="activeNavigation.icon" />
                     <h2>
                         {{
-                            search || recordStatus !== 'all'
+                            hasActiveFilters
                                 ? 'No matching records'
                                 : emptyTitle
                         }}
                     </h2>
                     <p>
                         {{
-                            search
-                                ? 'Try a different name, reference or keyword.'
+                            hasActiveFilters
+                                ? 'No records match your current filters. Try another name, status or filter combination.'
                                 : emptyDescription
                         }}
                     </p>
                     <button
-                        v-if="search || recordStatus !== 'all'"
+                        v-if="hasActiveFilters"
                         class="button button-outline"
                         @click="clearRecordFilters"
                     >
@@ -297,12 +480,53 @@
                                 <AdminActionMenu
                                     :label="`Actions for ${product.title}`"
                                     :items="productActions(product)"
-                                    :disabled="busy"
+                                    :disabled="
+                                        busy ||
+                                        productListLoading ||
+                                        productRefreshing
+                                    "
                                     @select="(id) => productAction(product, id)"
                                 />
                             </div>
                         </td>
                     </tr>
+                    <template v-if="productPage" #footer
+                        ><nav
+                            class="product-pagination"
+                            aria-label="Product catalog pages"
+                        >
+                            <button
+                                type="button"
+                                class="button button-outline"
+                                :disabled="
+                                    productListLoading ||
+                                    productRefreshing ||
+                                    productFiltersPending ||
+                                    busy ||
+                                    productPage.page <= 1
+                                "
+                                @click="changeProductPage(productPage.page - 1)"
+                            >
+                                Previous</button
+                            ><span aria-live="polite"
+                                >Page {{ productPage.page }} of
+                                {{ productPage.last_page }}</span
+                            ><button
+                                type="button"
+                                class="button button-outline"
+                                :disabled="
+                                    productListLoading ||
+                                    productRefreshing ||
+                                    productFiltersPending ||
+                                    busy ||
+                                    productPage.page >= productPage.last_page
+                                "
+                                @click="changeProductPage(productPage.page + 1)"
+                            >
+                                Next
+                            </button>
+                        </nav></template
+                    >
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'orders'"
@@ -363,7 +587,14 @@
                     >
                     <tr v-for="rfq in visibleRecords" :key="rfq.id">
                         <th scope="row">
-                            <strong>{{ rfq.title }}</strong
+                            <button
+                                type="button"
+                                class="operation-identity"
+                                :aria-label="`View request ${rfq.title}`"
+                                :disabled="busy"
+                                @click="openRecord('rfqs', rfq)"
+                            >
+                                {{ rfq.title }}</button
                             ><small
                                 >{{ rfq.rfq_number }} ·
                                 {{ rfq.category }}</small
@@ -414,7 +645,14 @@
                     >
                     <tr v-for="offer in visibleRecords" :key="offer.id">
                         <th scope="row">
-                            <strong>{{ offer.product_title }}</strong
+                            <button
+                                type="button"
+                                class="operation-identity"
+                                :aria-label="`View offer ${offer.product_title}`"
+                                :disabled="busy"
+                                @click="openRecord('offers', offer)"
+                            >
+                                {{ offer.product_title }}</button
                             ><small>{{ dateLabel(offer.created_at) }}</small>
                         </th>
                         <td>{{ offer.buyer_company || offer.buyer_name }}</td>
@@ -447,12 +685,12 @@
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'users'"
-                    caption="Marketplace users"
+                    caption="Marketplace accounts"
                     :busy="busy"
                     class="workspace-admin-list"
                     ><template #header>
                         <tr>
-                            <th scope="col">User</th>
+                            <th scope="col">Account</th>
                             <th scope="col">Role</th>
                             <th scope="col">Company</th>
                             <th scope="col">Country</th>
@@ -462,7 +700,14 @@
                     </template>
                     <tr v-for="user in visibleRecords" :key="user.id">
                         <th scope="row">
-                            <strong>{{ user.name }}</strong
+                            <button
+                                type="button"
+                                class="operation-identity"
+                                :aria-label="`View account ${user.name}`"
+                                :disabled="busy"
+                                @click="openRecord('users', user)"
+                            >
+                                {{ user.name }}</button
                             ><small>{{ user.email }}</small>
                         </th>
                         <td>{{ humanize(user.role) }}</td>
@@ -817,7 +1062,7 @@
                     ? 'Edit product listing'
                     : 'Create product listing'
             "
-            :busy="busy"
+            :busy="busy || productRefreshing"
             :dirty="productDirty"
             description="Manage product details, pricing, inventory and media. Changes are published only when you save."
             @close="closeProduct"
@@ -828,7 +1073,45 @@
                 novalidate
                 @submit.prevent="saveProduct"
             >
-                <fieldset class="product-editor-fields" :disabled="busy">
+                <fieldset
+                    class="product-editor-fields"
+                    :disabled="busy || productRefreshing"
+                >
+                    <section
+                        v-if="editingProduct"
+                        class="product-version-review"
+                    >
+                        <button
+                            type="button"
+                            class="button button-outline"
+                            :disabled="busy || productRefreshing"
+                            @click="checkSavedProduct"
+                        >
+                            {{
+                                productRefreshing
+                                    ? 'Checking saved version…'
+                                    : 'Check current saved version'
+                            }}
+                        </button>
+                        <p v-if="productRefreshMessage" role="status">
+                            {{ productRefreshMessage }}
+                        </p>
+                        <div v-if="freshProduct">
+                            <p>
+                                Latest saved version: {{ freshProduct.title }} ·
+                                {{ dateLabel(freshProduct.updated_at) }}. Your
+                                draft is still unchanged.
+                            </p>
+                            <button
+                                type="button"
+                                class="button button-outline"
+                                :disabled="busy || productRefreshing"
+                                @click="replaceWithSavedProduct"
+                            >
+                                Discard this draft and load saved version
+                            </button>
+                        </div>
+                    </section>
                     <p v-if="productRecovered" class="form-note" role="status">
                         Recovered your unsaved listing draft. Reselect
                         unfinished uploads and re-enter any unpublished digital
@@ -1422,7 +1705,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { safeProductDraft } from '@/design/productDraft'
 import { Link, router, usePage } from '@inertiajs/vue3'
 import SokoDialog from '@/components/SokoDialog.vue'
@@ -1444,6 +1727,19 @@ const props = defineProps<{
     currentUser: RecordData
     stats: Record<string, number>
     products?: RecordData[] | null
+    productPage?: {
+        page: number
+        per_page: number
+        total: number
+        filtered_total: number
+        last_page: number
+        from: number
+        to: number
+        filters: { q: string; category: string; sort: string }
+    }
+    productCategories?: string[]
+    selectedProduct?: RecordData | null
+    selectedProductStatus?: 'none' | 'available' | 'unavailable'
     orders?: RecordData[] | null
     users?: RecordData[] | null
     rfqs?: RecordData[] | null
@@ -1469,8 +1765,14 @@ const props = defineProps<{
         quoteRfqs?: boolean
     }
 }>()
+const refreshedProductAccess = ref<{
+    id: string
+    permissions: Record<string, boolean>
+} | null>(null)
 const recordCan = (kind: string, id: string, action: string) =>
-    props.recordCapabilities?.[kind]?.[id]?.[action] === true
+    kind === 'products' && refreshedProductAccess.value?.id === id
+        ? refreshedProductAccess.value.permissions[action] === true
+        : props.recordCapabilities?.[kind]?.[id]?.[action] === true
 const detailRecord = ref<RecordData | null>(null)
 const detailKind = ref('')
 const pendingOperation = ref('')
@@ -1730,7 +2032,7 @@ const navigation = computed(() => [
                   id: 'products',
                   label: 'Products',
                   icon: 'box',
-                  count: productList.value.length,
+                  count: props.productPage?.total ?? productList.value.length,
               },
           ]
         : []),
@@ -1768,7 +2070,7 @@ const navigation = computed(() => [
         ? [
               {
                   id: 'users',
-                  label: 'Users',
+                  label: 'Accounts',
                   icon: 'user',
                   count: (props.users || []).length,
               },
@@ -1802,23 +2104,208 @@ const descriptions: Record<string, string> = {
 }
 const sectionDescription = computed(() => descriptions[section.value])
 const sectionHref = (id: string) => `/dashboard?section=${id}`
+const productFilters = reactive({
+    q: props.productPage?.filters.q || '',
+    category: props.productPage?.filters.category || '',
+    sort: props.productPage?.filters.sort || 'newest',
+    per_page: props.productPage?.per_page || 25,
+})
+const productFiltersPending = computed(() =>
+    props.productPage
+        ? productFilters.q !== props.productPage.filters.q ||
+          productFilters.category !== props.productPage.filters.category ||
+          productFilters.sort !== props.productPage.filters.sort ||
+          productFilters.per_page !== props.productPage.per_page
+        : false
+)
+
+const productListLoading = ref(false)
+const productListError = ref('')
+let productSearchTimer: ReturnType<typeof setTimeout> | undefined
+let productQueuedSearch = false
+let productListDisposed = false
+let productSubmittedFilters = ''
+const productFilterSignature = () => JSON.stringify(productFilters)
+onBeforeUnmount(() => {
+    productListDisposed = true
+    if (productSearchTimer) clearTimeout(productSearchTimer)
+})
+const productReturnUrl = ref('')
+const productFilterCategories = computed(() =>
+    [
+        ...new Set([
+            ...(props.productCategories || []),
+            ...(productFilters.category ? [productFilters.category] : []),
+        ]),
+    ].sort()
+)
+function productListUrl(
+    pageNumber = props.productPage?.page || 1,
+    filters = props.productPage?.filters || productFilters,
+    perPage = props.productPage?.per_page || productFilters.per_page
+) {
+    const query = new URLSearchParams({
+        section: 'products',
+        sort: filters.sort || 'newest',
+        page: String(pageNumber),
+        per_page: String(perPage),
+    })
+    if (filters.q) query.set('q', filters.q)
+    if (filters.category) query.set('category', filters.category)
+    return '/dashboard?' + query.toString()
+}
+watch(
+    () => props.productPage,
+    (value) => {
+        if (
+            value &&
+            (!productListLoading.value ||
+                productFilterSignature() === productSubmittedFilters)
+        )
+            Object.assign(productFilters, value.filters, {
+                per_page: value.per_page,
+            })
+    },
+    { deep: true, flush: 'sync' }
+)
+function visitProductList(url: string) {
+    if (productListDisposed || section.value !== 'products') return
+    if (
+        busy.value ||
+        productRefreshing.value ||
+        productOpen.value ||
+        deleteTarget.value
+    )
+        return
+    if (productListLoading.value) {
+        productQueuedSearch = true
+        return
+    }
+    if (productSearchTimer) clearTimeout(productSearchTimer)
+    productQueuedSearch = false
+    productSubmittedFilters = productFilterSignature()
+    productListLoading.value = true
+    productListError.value = ''
+    router.get(
+        url,
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            onError: () => {
+                productListError.value =
+                    'The product list could not be loaded. Your previous results are still shown.'
+            },
+            onNetworkError: () => {
+                productListError.value =
+                    'Connection lost. Your previous product results are still shown. Try again.'
+                return false
+            },
+            onHttpException: () => {
+                productListError.value =
+                    'The product list could not be loaded. Your previous results are still shown.'
+                return false
+            },
+            onFinish: () => {
+                productListLoading.value = false
+                if (productQueuedSearch) {
+                    productQueuedSearch = false
+                    void nextTick(applyProductFilters)
+                }
+            },
+        }
+    )
+}
+function applyProductFilters() {
+    visitProductList(productListUrl(1, productFilters, productFilters.per_page))
+}
+watch(
+    () => productFilters.q,
+    (value) => {
+        if (productSearchTimer) clearTimeout(productSearchTimer)
+        if (section.value !== 'products' || !props.productPage) return
+        if (productListLoading.value) {
+            if (productFilterSignature() === productSubmittedFilters) return
+            productQueuedSearch = true
+        } else if (value === props.productPage.filters.q) return
+        productSearchTimer = setTimeout(applyProductFilters, value ? 350 : 0)
+    }
+)
+
+function resetProductFilters() {
+    if (
+        busy.value ||
+        productRefreshing.value ||
+        productOpen.value ||
+        deleteTarget.value
+    )
+        return
+    if (productSearchTimer) clearTimeout(productSearchTimer)
+    Object.assign(productFilters, {
+        q: '',
+        category: '',
+        sort: 'newest',
+        per_page: 25,
+    })
+    applyProductFilters()
+}
+function changeProductPage(pageNumber: number) {
+    if (productFiltersPending.value) return
+    if (
+        !props.productPage ||
+        pageNumber < 1 ||
+        pageNumber > props.productPage.last_page
+    )
+        return
+    visitProductList(productListUrl(pageNumber))
+}
 const search = ref('')
 const recordStatus = ref('all')
+const accountRole = ref('all')
+const accountVerification = ref('all')
+const accountRoles = computed(() =>
+    [
+        ...new Set([
+            ...(props.users || [])
+                .map((account) => String(account.role || ''))
+                .filter(Boolean),
+            ...(accountRole.value === 'all' ? [] : [accountRole.value]),
+        ]),
+    ].sort()
+)
+const hasActiveFilters = computed(() =>
+    section.value === 'products' && props.productPage
+        ? Boolean(
+              props.productPage.filters.q || props.productPage.filters.category
+          )
+        : Boolean(search.value.trim()) ||
+          (section.value === 'users'
+              ? accountRole.value !== 'all' ||
+                accountVerification.value !== 'all'
+              : recordStatus.value !== 'all')
+)
 function keepReviewing() {
     pendingOperation.value = ''
     pendingQuote.value = null
 }
 function clearRecordFilters() {
+    if (section.value === 'products' && props.productPage) {
+        resetProductFilters()
+        return
+    }
     search.value = ''
     recordStatus.value = 'all'
+    accountRole.value = 'all'
+    accountVerification.value = 'all'
 }
 const statusOptions = computed(() =>
     [
-        ...new Set(
-            records.value
+        ...new Set([
+            ...records.value
                 .map((item) => String(item.status || ''))
-                .filter(Boolean)
-        ),
+                .filter(Boolean),
+            ...(recordStatus.value === 'all' ? [] : [recordStatus.value]),
+        ]),
     ].sort()
 )
 const pageError = ref('')
@@ -1826,6 +2313,10 @@ const localNotice = ref('')
 watch(section, () => {
     search.value = ''
     recordStatus.value = 'all'
+    accountRole.value = 'all'
+    accountVerification.value = 'all'
+    if (productSearchTimer) clearTimeout(productSearchTimer)
+    productQueuedSearch = false
     closeRecord()
     pageError.value = ''
     localNotice.value = ''
@@ -1841,40 +2332,59 @@ const records = computed<RecordData[]>(
         })[section.value] || []
 )
 const visibleRecords = computed(() => {
+    if (section.value === 'products' && props.productPage)
+        return productList.value
     const query = search.value.trim().toLowerCase()
-    const scoped =
-        recordStatus.value === 'all'
-            ? records.value
-            : records.value.filter((item) => item.status === recordStatus.value)
-    return query
-        ? scoped.filter((item) =>
-              [
-                  'title',
-                  'sku',
-                  'category',
-                  'vendor_name',
-                  'order_number',
-                  'customer_name',
-                  'customer_email',
-                  'rfq_number',
-                  'buyer_company',
-                  'buyer_name',
-                  'buyer_email',
-                  'destination_country',
-                  'product_title',
-                  'name',
-                  'email',
-                  'company_name',
-                  'status',
-                  'role',
-              ].some((key) =>
-                  String(item[key] || '')
-                      .toLowerCase()
-                      .includes(query)
-              )
-          )
-        : scoped
+    const scoped = records.value.filter((item) => {
+        if (section.value === 'users') {
+            if (accountRole.value !== 'all' && item.role !== accountRole.value)
+                return false
+            if (
+                accountVerification.value !== 'all' &&
+                (item.verified ? 'verified' : 'unverified') !==
+                    accountVerification.value
+            )
+                return false
+        } else if (
+            recordStatus.value !== 'all' &&
+            item.status !== recordStatus.value
+        )
+            return false
+        if (!query) return true
+        if (
+            section.value === 'users' &&
+            (query === 'verified' || query === 'unverified')
+        )
+            return (item.verified ? 'verified' : 'unverified') === query
+        return [
+            'title',
+            'sku',
+            'category',
+            'vendor_name',
+            'order_number',
+            'customer_name',
+            'customer_email',
+            'rfq_number',
+            'buyer_company',
+            'buyer_name',
+            'buyer_email',
+            'destination_country',
+            'product_title',
+            'name',
+            'email',
+            'company_name',
+            'country',
+            'status',
+            'role',
+        ].some((key) =>
+            String(item[key] || '')
+                .toLowerCase()
+                .includes(query)
+        )
+    })
+    return scoped
 })
+
 const emptyTitle = computed(
     () =>
         ({
@@ -1882,7 +2392,7 @@ const emptyTitle = computed(
             orders: 'No orders yet',
             rfqs: 'No open sourcing requests',
             offers: 'No buyer offers yet',
-            users: 'No users to display',
+            users: 'No accounts to display',
         })[section.value]
 )
 const emptyDescription = computed(
@@ -2014,6 +2524,108 @@ const mutate = (
     })
 }
 const productOpen = ref(false)
+const productRefreshing = ref(false)
+const freshProduct = ref<RecordData | null>(null)
+const productRefreshMessage = ref('')
+const pendingProductDraft = ref<RecordData | null>(null)
+const pendingProductDiscard = ref(false)
+function discardPendingProductDraft() {
+    if (busy.value || productRefreshing.value || !pendingProductDiscard.value)
+        return
+    pendingProductDraft.value = null
+    pendingProductDiscard.value = false
+    productRefreshMessage.value = ''
+    router.remember(null, productDraftKey)
+}
+async function fetchSelectedProduct(id: string) {
+    const url = productListUrl() + '&selected_product=' + encodeURIComponent(id)
+    const response = await fetch(url, {
+        headers: {
+            'X-Inertia': 'true',
+            'X-Requested-With': 'XMLHttpRequest',
+            Accept: 'application/json',
+        },
+        credentials: 'same-origin',
+        cache: 'no-store',
+    })
+    if (!response.ok)
+        throw new Error(
+            'The current saved product could not be checked. Your draft is unchanged.'
+        )
+    const data = await response.json()
+    if (productListDisposed || section.value !== 'products')
+        throw new Error(
+            'Product lookup stopped because you left the product catalog. Your saved draft remains available.'
+        )
+    const record = data.props?.selectedProduct
+    const permissions = data.props?.recordCapabilities?.products?.[id] || {}
+    refreshedProductAccess.value = { id, permissions }
+    if (
+        data.props?.selectedProductStatus !== 'available' ||
+        !record ||
+        record.id !== id ||
+        permissions.update !== true
+    )
+        throw new Error(
+            'This product is unavailable or you no longer have edit access. Your draft has not been discarded.'
+        )
+    return record as RecordData
+}
+async function checkSavedProduct() {
+    if (busy.value || productRefreshing.value || !editingProduct.value) return
+    productRefreshing.value = true
+    freshProduct.value = null
+    productRefreshMessage.value = ''
+    try {
+        freshProduct.value = await fetchSelectedProduct(editingProduct.value.id)
+        productRefreshMessage.value =
+            'Current saved details loaded for review. Your draft has not changed.'
+    } catch (error) {
+        productRefreshMessage.value =
+            error instanceof Error
+                ? error.message
+                : 'Could not check the saved product.'
+    } finally {
+        productRefreshing.value = false
+    }
+}
+function replaceWithSavedProduct() {
+    if (busy.value || productRefreshing.value || !freshProduct.value) return
+    loadProductForm(freshProduct.value)
+    freshProduct.value = null
+    productRefreshMessage.value = 'Loaded the current saved version.'
+}
+async function recoverOffpageProduct() {
+    if (busy.value || productRefreshing.value || !pendingProductDraft.value)
+        return
+    productRefreshing.value = true
+    try {
+        const record = await fetchSelectedProduct(
+            pendingProductDraft.value.productId
+        )
+        Object.assign(
+            productForm,
+            emptyProduct(),
+            safeProductDraft(pendingProductDraft.value.form)
+        )
+        productForm.digital_download_url = record.digital_download_url || ''
+        editingProduct.value = record
+        productSnapshot.value = ''
+        productRecovered.value = true
+        productOpen.value = true
+        productReturnUrl.value = productListUrl()
+        pendingProductDraft.value = null
+        pendingProductDiscard.value = false
+        productRefreshMessage.value = ''
+    } catch (error) {
+        productRefreshMessage.value =
+            error instanceof Error
+                ? error.message
+                : 'Could not reopen the saved draft.'
+    } finally {
+        productRefreshing.value = false
+    }
+}
 const editingProduct = ref<RecordData | null>(null)
 const emptyProduct = () => ({
     version: '',
@@ -2053,9 +2665,9 @@ const restoredProductDraft = router.restore(productDraftKey) as
     RecordData | undefined
 if (restoredProductDraft?.open && restoredProductDraft.form) {
     const record = restoredProductDraft.productId
-        ? (props.products || []).find(
-              (p: RecordData) => p.id === restoredProductDraft.productId
-          )
+        ? [props.selectedProduct, ...(props.products || [])]
+              .filter(Boolean)
+              .find((p) => p?.id === restoredProductDraft.productId)
         : null
     const allowed = record
         ? recordCan('products', record.id, 'update')
@@ -2067,6 +2679,9 @@ if (restoredProductDraft?.open && restoredProductDraft.form) {
         productSnapshot.value = ''
         productRecovered.value = true
         productOpen.value = true
+        productReturnUrl.value = productListUrl()
+    } else if (restoredProductDraft.productId) {
+        pendingProductDraft.value = restoredProductDraft
     }
 }
 watch(
@@ -2086,6 +2701,10 @@ watch(
     { deep: true }
 )
 function clearProductDraft() {
+    pendingProductDraft.value = null
+    freshProduct.value = null
+    refreshedProductAccess.value = null
+    productRefreshMessage.value = ''
     productOpen.value = false
     productRecovered.value = false
     router.remember(null, productDraftKey)
@@ -2112,13 +2731,32 @@ const marketRegions = computed(() =>
           ]
 )
 const openProduct = (product?: RecordData) => {
-    if (busy.value || productOpen.value) return
+    if (pendingProductDraft.value) {
+        productRefreshMessage.value =
+            'Reopen or explicitly discard the saved draft before starting another.'
+        return
+    }
+    if (
+        busy.value ||
+        productRefreshing.value ||
+        productListLoading.value ||
+        productOpen.value
+    )
+        return
+    if (productSearchTimer) clearTimeout(productSearchTimer)
+    productQueuedSearch = false
     if (
         product
             ? !recordCan('products', product.id, 'update')
             : !props.capabilities?.createProducts
     )
         return
+    productReturnUrl.value = productListUrl()
+    freshProduct.value = null
+    productRefreshMessage.value = ''
+    loadProductForm(product)
+}
+function loadProductForm(product?: RecordData) {
     editingProduct.value = product || null
     Object.assign(productForm, emptyProduct())
     if (product) {
@@ -2198,10 +2836,19 @@ const closeProduct = () => {
     if (!busy.value) clearProductDraft()
 }
 const saveProduct = (event: Event) => {
-    if (busy.value) return
+    if (busy.value || productRefreshing.value) return
+    if (
+        editingProduct.value &&
+        !recordCan('products', editingProduct.value.id, 'update')
+    ) {
+        formError.value =
+            'Edit access could not be confirmed. Check the current saved version before saving.'
+        return
+    }
     validatePriceTiers(event.target as HTMLFormElement)
     if (!validate(event)) return
     const id = editingProduct.value?.id
+    const returnUrl = productReturnUrl.value || productListUrl()
     mutate(
         `${id ? `/dashboard/products/${id}` : '/dashboard/products'}?section=products`,
         { ...productForm },
@@ -2213,7 +2860,7 @@ const saveProduct = (event: Event) => {
                 : 'Listing published.'
             void nextTick(() =>
                 router.get(
-                    sectionHref('products'),
+                    returnUrl,
                     {},
                     { preserveState: true, preserveScroll: true }
                 )
@@ -2224,7 +2871,12 @@ const saveProduct = (event: Event) => {
 }
 const deleteTarget = ref<RecordData | null>(null)
 const openDelete = (product: RecordData) => {
+    if (busy.value || productRefreshing.value || productListLoading.value)
+        return
+    if (productSearchTimer) clearTimeout(productSearchTimer)
+    productQueuedSearch = false
     if (!recordCan('products', product.id, 'delete')) return
+    productReturnUrl.value = productListUrl()
     deleteTarget.value = product
     formError.value = ''
 }
@@ -2240,6 +2892,13 @@ const removeProduct = () => {
         () => {
             deleteTarget.value = null
             localNotice.value = 'Listing deleted.'
+            void nextTick(() =>
+                router.get(
+                    productReturnUrl.value || productListUrl(),
+                    {},
+                    { preserveState: true, preserveScroll: true }
+                )
+            )
         },
         true
     )
@@ -2343,6 +3002,108 @@ const saveContent = (event: Event) => {
 </script>
 
 <style scoped>
+.product-list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: end;
+    margin-bottom: 1.5rem;
+}
+.product-list-toolbar label {
+    display: grid;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    font-weight: 650;
+    flex: 1;
+    min-width: min(100%, 9rem);
+}
+.product-list-toolbar .product-query {
+    flex: 2;
+    min-width: min(100%, 16rem);
+}
+.product-list-toolbar input,
+.product-list-toolbar select {
+    min-height: 44px;
+    padding: 0.6rem 0.75rem;
+    width: 100%;
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+    background: var(--soko-surface);
+    color: var(--soko-ink);
+}
+.product-results-count {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--soko-muted);
+}
+.product-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+    flex-wrap: wrap;
+}
+.product-version-review,
+.product-recovery-banner {
+    padding: 1rem;
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+    background: var(--soko-canvas);
+    margin-bottom: 1rem;
+}
+.product-version-review p,
+.product-recovery-banner p {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    margin-block: 0.5rem;
+}
+
+.workspace-toolbar {
+    flex-wrap: wrap;
+}
+.workspace-search .icon-button {
+    min-height: 44px;
+    min-width: 44px;
+}
+.operation-identity {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--soko-navy);
+    text-align: left;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+.operation-identity:focus-visible {
+    outline: 2px solid var(--soko-navy);
+    outline-offset: 3px;
+    border-radius: var(--soko-radius);
+}
+.operation-identity:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+@media (max-width: 640px) {
+    .operation-status-filter {
+        width: 100%;
+        justify-content: space-between;
+    }
+    .operation-status-filter select {
+        flex: 1;
+        max-width: 70%;
+    }
+}
+
 .operation-status-filter {
     display: flex;
     align-items: center;
