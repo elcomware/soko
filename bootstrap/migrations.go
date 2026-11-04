@@ -14,5 +14,7 @@ func Migrations() []schema.Migration {
 		&migrations.M20240101000003CreateOrdersTable{},
 		&migrations.M20240101000004CreateRfqsTable{},
 		&migrations.M20240101000005CreateOffersTable{},
+		&migrations.M20261103000001CreateStorefrontContents{},
+		&migrations.M20261104000001AddStockReservedToOrderItems{},
 	}
 }

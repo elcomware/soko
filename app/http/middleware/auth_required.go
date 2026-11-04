@@ -1,25 +1,38 @@
 package middleware
 
 import (
+	"elcomware/app/facades"
+	"elcomware/app/models"
 	"github.com/goravel/framework/contracts/http"
 )
 
-type AuthRequiredMiddleware struct{}
-
-func (m *AuthRequiredMiddleware) Signature() string {
-	return "auth_required"
+func CurrentUser(ctx http.Context) *models.User {
+	if !ctx.Request().HasSession() {
+		return nil
+	}
+	id, ok := ctx.Request().Session().Get("user_id").(string)
+	if !ok || id == "" {
+		return nil
+	}
+	var user models.User
+	if err := facades.Orm().Query().Where("id = ?", id).First(&user); err != nil || user.ID == "" {
+		return nil
+	}
+	return &user
 }
 
+type AuthRequiredMiddleware struct{}
+
+func (m *AuthRequiredMiddleware) Signature() string { return "auth_required" }
 func (m *AuthRequiredMiddleware) Handle(ctx http.Context) {
-	if !ctx.Request().HasSession() || (ctx.Request().Session().Get("user_id") == nil && ctx.Request().Session().Get("user") == nil) {
-		ctx.Request().Session().Flash("error", "Please sign in to access the enterprise dashboard.")
-		ctx.Response().Redirect(http.StatusFound, "/login")
-		ctx.Request().Abort()
+	if CurrentUser(ctx) == nil {
+		if ctx.Request().HasSession() {
+			ctx.Request().Session().Forget("user_id", "user", "user_name", "user_email", "user_role")
+			ctx.Request().Session().Flash("error", "Please sign in to continue.")
+		}
+		_ = ctx.Response().Redirect(http.StatusFound, "/login").Abort()
 		return
 	}
 	ctx.Request().Next()
 }
-
-func AuthRequired() http.Middleware {
-	return &AuthRequiredMiddleware{}
-}
+func AuthRequired() http.Middleware { return &AuthRequiredMiddleware{} }

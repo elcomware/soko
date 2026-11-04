@@ -1,6 +1,7 @@
 package queries
 
 import (
+	"errors"
 	"strings"
 
 	"elcomware/app/facades"
@@ -24,6 +25,7 @@ func NewProductQueries() *ProductQueries {
 
 func (q *ProductQueries) FindFiltered(filter ProductFilter) ([]models.Product, error) {
 	builder := facades.Orm().Query().Model(&models.Product{})
+	filter.Region = models.NormalizeRegion(filter.Region)
 
 	if filter.Type != "" && filter.Type != "all" {
 		builder = builder.Where("type = ?", filter.Type)
@@ -32,7 +34,14 @@ func (q *ProductQueries) FindFiltered(filter ProductFilter) ([]models.Product, e
 		builder = builder.Where("format = ?", filter.Format)
 	}
 	if filter.Region != "" && filter.Region != "global" && filter.Region != "all" {
-		builder = builder.Where("vendor_region = ?", filter.Region)
+		aliases := models.RegionAliases(filter.Region)
+		placeholders := make([]string, len(aliases))
+		args := make([]any, len(aliases))
+		for i, alias := range aliases {
+			placeholders[i] = "?"
+			args[i] = alias
+		}
+		builder = builder.Where("LOWER(TRIM(vendor_region)) IN ("+strings.Join(placeholders, ",")+")", args...)
 	}
 	if filter.Category != "" && filter.Category != "all" {
 		builder = builder.Where("category = ?", filter.Category)
@@ -63,6 +72,9 @@ func (q *ProductQueries) FindByID(id string) (*models.Product, error) {
 	if err := facades.Orm().Query().Where("id = ?", id).First(&product); err != nil {
 		return nil, err
 	}
+	if product.ID == "" {
+		return nil, errors.New("listing not found")
+	}
 	product.Hydrate()
 	return &product, nil
 }
@@ -70,4 +82,3 @@ func (q *ProductQueries) FindByID(id string) (*models.Product, error) {
 func (q *ProductQueries) Count() (int64, error) {
 	return facades.Orm().Query().Model(&models.Product{}).Count()
 }
-

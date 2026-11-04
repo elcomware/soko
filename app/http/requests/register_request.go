@@ -19,9 +19,10 @@ func (r *RegisterRequest) Authorize(ctx http.Context) error {
 
 func (r *RegisterRequest) Rules(ctx http.Context) map[string]any {
 	return map[string]any{
-		"name":     "required|min_len:2",
-		"email":    "required|email",
-		"password": "required|min_len:6",
+		"name":         "required|min_len:2|max_len:255",
+		"account_type": "in:buyer,individual,enterprise,supplier",
+		"email":        "required|email",
+		"password":     "required|min_len:8",
 	}
 }
 
@@ -31,7 +32,6 @@ func (r *RegisterRequest) Messages(ctx http.Context) map[string]string {
 		"email.required":    "Email address is required.",
 		"email.email":       "Please provide a valid business email address.",
 		"password.required": "Password is required.",
-		"password.min_len":  "Password must be at least 6 characters.",
+		"password.min_len":  "Password must be at least 8 characters.",
 	}
 }
-

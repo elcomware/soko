@@ -1,161 +1,254 @@
 <template>
-  <div class="max-w-xl mx-auto px-4 py-12 space-y-8">
-    <div class="text-center space-y-2">
-      <div class="inline-flex p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mb-2">
-        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
-      </div>
-      <h1 class="text-2xl font-black text-white">Create Soko Enterprise Account</h1>
-      <p class="text-xs text-slate-400">Join the verified global sourcing network for physical commodities & digital software</p>
-    </div>
-
-    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-      <!-- Role Toggle: Buyer vs Supplier -->
-      <div>
-        <label class="block text-xs font-semibold text-slate-300 mb-2">Select Your Primary Account Type</label>
-        <div class="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            @click="form.account_type = 'buyer'"
-            :class="[
-              'p-3.5 rounded-2xl border text-left transition-all',
-              form.account_type === 'buyer'
-                ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 shadow-md'
-                : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-            ]"
-          >
-            <div class="font-bold text-xs flex items-center gap-1.5">
-              <span>🛒 Global Procurement Buyer</span>
+    <div class="auth-page auth-register site-container">
+        <aside class="auth-scene">
+            <img
+                src="/public/images/sourcing-harbor.jpg"
+                alt="An international container harbor"
+            />
+            <div>
+                <p class="eyebrow">Business without boundaries</p>
+                <h2>Your next connection<br />starts here.</h2>
+                <p>
+                    Find products for your business or bring your catalog to
+                    buyers around the world.
+                </p>
+                <ul>
+                    <li>
+                        <SokoIcon name="search" />Discover physical and digital
+                        products
+                    </li>
+                    <li>
+                        <SokoIcon name="document" />Request quotations and
+                        compare offers
+                    </li>
+                    <li>
+                        <SokoIcon name="box" />Manage your trade in one
+                        workspace
+                    </li>
+                </ul>
             </div>
-            <div class="text-[10px] text-slate-500 mt-1">Source wholesale goods & digital licenses</div>
-          </button>
-
-          <button
-            type="button"
-            @click="form.account_type = 'supplier'"
-            :class="[
-              'p-3.5 rounded-2xl border text-left transition-all',
-              form.account_type === 'supplier'
-                ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300 shadow-md'
-                : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-            ]"
-          >
-            <div class="font-bold text-xs flex items-center gap-1.5">
-              <span>🏭 Enterprise Supplier / Merchant</span>
-            </div>
-            <div class="text-[10px] text-slate-500 mt-1">Sell physical freight & automated digital products</div>
-          </button>
-        </div>
-      </div>
-
-      <form @submit.prevent="submit" class="space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Full Legal Name</label>
-            <input
-              v-model="form.name"
-              type="text"
-              required
-              placeholder="e.g. Alex Mercer"
-              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-amber-500 outline-none"
-            />
-          </div>
-
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Corporate Email</label>
-            <input
-              v-model="form.email"
-              type="email"
-              required
-              placeholder="alex@enterprise.com"
-              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-amber-500 outline-none"
-            />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Company / Organization Legal Name</label>
-            <input
-              v-model="form.company_name"
-              type="text"
-              required
-              placeholder="e.g. Apex Global Tech Ltd"
-              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-amber-500 outline-none"
-            />
-          </div>
-
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Country / Jurisdiction</label>
-            <select
-              v-model="form.country"
-              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-amber-500 outline-none"
+        </aside>
+        <section class="auth-content" aria-labelledby="register-title">
+            <p class="eyebrow">Make room for possibility</p>
+            <h1 id="register-title">Create an account</h1>
+            <p class="auth-intro">
+                Tell us a little about yourself and how you plan to use Soko.
+            </p>
+            <form
+                class="soko-form auth-form"
+                novalidate
+                @submit.prevent="submit"
             >
-              <option value="United States">United States</option>
-              <option value="Germany">Germany</option>
-              <option value="China">China</option>
-              <option value="United Kingdom">United Kingdom</option>
-              <option value="Japan">Japan</option>
-              <option value="Singapore">Singapore</option>
-              <option value="Kenya">Kenya</option>
-              <option value="Global / Other">Global / Other</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1">Password</label>
-          <input
-            v-model="form.password"
-            type="password"
-            required
-            placeholder="At least 8 characters"
-            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-amber-500 outline-none"
-          />
-        </div>
-
-        <div class="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-          <div class="text-amber-400 font-semibold">✓ Soko Trade Escrow Protection Included</div>
-          <div>All supplier listings are verified via business registration records and test license downloads.</div>
-        </div>
-
-        <button
-          type="submit"
-          :disabled="form.processing"
-          class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm shadow-xl shadow-amber-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <span>Complete Registration</span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-          </svg>
-        </button>
-      </form>
+                <p
+                    v-if="error"
+                    id="register-error"
+                    role="alert"
+                    class="form-error"
+                >
+                    {{ error }}
+                </p>
+                <fieldset class="auth-role">
+                    <legend>I want to…</legend>
+                    <label
+                        :class="{
+                            'is-selected': form.account_type === 'buyer',
+                        }"
+                        ><input
+                            v-model="form.account_type"
+                            type="radio"
+                            name="account_type"
+                            value="buyer"
+                        /><span
+                            ><strong>Buy and source</strong
+                            ><small
+                                >Find products and request quotations</small
+                            ></span
+                        ></label
+                    ><label
+                        :class="{
+                            'is-selected': form.account_type === 'supplier',
+                        }"
+                        ><input
+                            v-model="form.account_type"
+                            type="radio"
+                            name="account_type"
+                            value="supplier"
+                        /><span
+                            ><strong>Sell on Soko</strong
+                            ><small
+                                >Publish products and connect with buyers</small
+                            ></span
+                        ></label
+                    >
+                </fieldset>
+                <div class="form-row">
+                    <div class="soko-field">
+                        <label for="register-name">Full name</label
+                        ><input
+                            id="register-name"
+                            v-model="form.name"
+                            name="name"
+                            required
+                            minlength="2"
+                            maxlength="255"
+                            autocomplete="name"
+                            :aria-invalid="invalidFields.includes('name')"
+                            :aria-describedby="
+                                error ? 'register-error' : undefined
+                            "
+                        />
+                    </div>
+                    <div class="soko-field">
+                        <label for="register-email">Email address</label
+                        ><input
+                            id="register-email"
+                            v-model="form.email"
+                            name="email"
+                            required
+                            type="email"
+                            autocomplete="email"
+                            placeholder="you@company.com"
+                            :aria-invalid="invalidFields.includes('email')"
+                            :aria-describedby="
+                                error ? 'register-error' : undefined
+                            "
+                        />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="soko-field">
+                        <label for="register-company"
+                            >Company name <span>(optional)</span></label
+                        ><input
+                            id="register-company"
+                            v-model="form.company_name"
+                            name="company_name"
+                            maxlength="255"
+                            autocomplete="organization"
+                        />
+                    </div>
+                    <div class="soko-field">
+                        <label for="register-country">Country or region</label
+                        ><input
+                            id="register-country"
+                            v-model="form.country"
+                            name="country"
+                            required
+                            maxlength="64"
+                            autocomplete="country-name"
+                            placeholder="e.g. Kenya"
+                            :aria-invalid="invalidFields.includes('country')"
+                            :aria-describedby="
+                                error ? 'register-error' : undefined
+                            "
+                        />
+                    </div>
+                </div>
+                <div class="soko-field">
+                    <label for="register-password">Password</label>
+                    <div class="auth-password">
+                        <input
+                            id="register-password"
+                            v-model="form.password"
+                            name="password"
+                            :type="passwordVisible ? 'text' : 'password'"
+                            required
+                            minlength="8"
+                            autocomplete="new-password"
+                            :aria-invalid="invalidFields.includes('password')"
+                            :aria-describedby="
+                                error
+                                    ? 'password-guidance register-error'
+                                    : 'password-guidance'
+                            "
+                        /><button
+                            type="button"
+                            :aria-pressed="passwordVisible"
+                            aria-controls="register-password"
+                            @click="passwordVisible = !passwordVisible"
+                        >
+                            {{ passwordVisible ? 'Hide' : 'Show' }}
+                        </button>
+                    </div>
+                    <p id="password-guidance" class="form-note">
+                        Use at least 8 characters. A longer, unique password
+                        helps protect your account.
+                    </p>
+                </div>
+                <button
+                    type="submit"
+                    class="button button-navy auth-submit"
+                    :disabled="form.processing"
+                >
+                    {{ form.processing ? 'Creating account…' : 'Create account'
+                    }}<SokoIcon name="arrow" />
+                </button>
+                <p class="form-note">
+                    {{
+                        form.account_type === 'supplier'
+                            ? 'Your supplier workspace will be ready after registration.'
+                            : 'Your account keeps orders, offers and sourcing requests together.'
+                    }}
+                </p>
+            </form>
+            <p class="auth-switch">
+                Already have an account? <Link href="/login">Sign in</Link>
+            </p>
+        </section>
     </div>
-
-    <div class="text-center text-xs text-slate-400">
-      Already have a verified account?
-      <Link href="/login" class="text-amber-400 font-semibold hover:underline">
-        Sign in here
-      </Link>
-    </div>
-  </div>
 </template>
-
 <script setup lang="ts">
+import { ref } from 'vue'
 import { Link, useForm } from '@inertiajs/vue3'
-
+import SokoIcon from '@/components/SokoIcon.vue'
+import '../../../css/workspace.css'
 const form = useForm({
-  name: '',
-  email: '',
-  password: '',
-  company_name: '',
-  country: 'United States',
-  account_type: 'buyer',
+    name: '',
+    email: '',
+    password: '',
+    company_name: '',
+    country: '',
+    account_type: 'buyer',
 })
-
-const submit = () => {
-  form.post('/register')
+const passwordVisible = ref(false)
+const error = ref('')
+const invalidFields = ref<string[]>([])
+const submit = (event: Event) => {
+    if (form.processing) return
+    invalidFields.value = []
+    error.value = ''
+    const element = event.target as HTMLFormElement
+    const invalid = Array.from(element.querySelectorAll('input')).filter(
+        (input) => !input.checkValidity()
+    )
+    if (invalid.length) {
+        invalidFields.value = invalid.map((input) => input.name)
+        const first = invalid[0]
+        const label =
+            element
+                .querySelector(`label[for="${first.id}"]`)
+                ?.textContent?.trim()
+                .toLowerCase() || 'this field'
+        error.value = first.validity.valueMissing
+            ? `Enter your ${label}.`
+            : first.validity.tooShort
+              ? `Use at least ${first.minLength} characters for your ${label}.`
+              : `Enter a valid ${label}.`
+        first.focus()
+        return
+    }
+    form.post('/register', {
+        preserveScroll: (response) => response.component === 'Auth/Register',
+        onSuccess: (response) => {
+            const message = (response.props.flash as Record<string, string>)
+                ?.error
+            if (message) error.value = message
+        },
+        onError: (errors) => {
+            error.value =
+                Object.values(errors).join(' ') ||
+                'Your account could not be created. Check your details and try again.'
+        },
+    })
 }
 </script>
-

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/facades"
 
@@ -38,7 +39,8 @@ func share(ctx http.Context) map[string]any {
 
 	return map[string]any{
 		// Available on every page as usePage().props.appName.
-		"appName": facades.Config().GetString("app.name"),
+		"appName":   facades.Config().GetString("app.name"),
+		"cartCount": cartCount(ctx),
 		// The auth object, available on every page as usePage().props.auth.user
 		// (nil when nobody is logged in). Mirrors the Inertia/Laravel convention.
 		"auth": map[string]any{
@@ -57,20 +59,20 @@ func share(ctx http.Context) map[string]any {
 //	ctx.Request().Session().Put("user", user)
 //
 // and clear it on logout with ctx.Request().Session().Forget("user").
-func authUser(ctx http.Context) any {
+func authUser(ctx http.Context) any { return CurrentUser(ctx) }
+
+func cartCount(ctx http.Context) int {
 	if !ctx.Request().HasSession() {
-		return nil
+		return 0
 	}
-	if u := ctx.Request().Session().Get("user"); u != nil {
-		return u
-	}
-	if uid := ctx.Request().Session().Get("user_id"); uid != nil {
-		return map[string]any{
-			"id":    uid,
-			"name":  ctx.Request().Session().Get("user_name"),
-			"email": ctx.Request().Session().Get("user_email"),
-			"role":  ctx.Request().Session().Get("user_role"),
+	raw, _ := ctx.Request().Session().Get("cart").(string)
+	var cart map[string]int
+	_ = json.Unmarshal([]byte(raw), &cart)
+	count := 0
+	for _, q := range cart {
+		if q > 0 && q <= 1000000 {
+			count += q
 		}
 	}
-	return nil
+	return count
 }

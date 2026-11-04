@@ -1,48 +1,48 @@
 package routes
 
 import (
+	"elcomware/app/http/controllers"
+	appmiddleware "elcomware/app/http/middleware"
 	"github.com/goravel/framework/contracts/route"
 	"github.com/goravel/framework/facades"
 	sessionmiddleware "github.com/goravel/framework/session/middleware"
-
-	"elcomware/app/http/controllers"
-	appmiddleware "elcomware/app/http/middleware"
 )
 
 func Web() {
-	// Static assets (no session needed).
 	facades.Route().Static("public", "./public")
 	facades.Route().Static("build", "./public/build")
-
-	// Inertia web group with session support
-	facades.Route().Middleware(
-		sessionmiddleware.StartSession(),
-		appmiddleware.HandleInertiaRequests(),
-	).Group(func(router route.Router) {
-		storeController := controllers.NewStoreController()
-		authController := controllers.NewAuthController()
-		dashboardController := controllers.NewDashboardController()
-
-		// eStore Landing, Global Catalog & B2B Features
-		router.Get("/", storeController.Index)
-		router.Get("/products/{id}", storeController.Show)
-		router.Post("/checkout", storeController.Checkout)
-		router.Post("/make-offer", storeController.MakeOffer)
-		router.Post("/rfqs", storeController.CreateRfq)
-
-		// Authentication & Account Creation
-		router.Get("/login", authController.ShowLogin)
-		router.Post("/login", authController.Login)
-		router.Get("/register", authController.ShowRegister)
-		router.Post("/register", authController.Register)
-		router.Any("/logout", authController.Logout)
-
-		// Enterprise Admin & Merchant Dashboard
-		router.Middleware(appmiddleware.AuthRequired()).Group(func(authRouter route.Router) {
-			authRouter.Get("/dashboard", dashboardController.Index)
-			authRouter.Post("/dashboard/products", dashboardController.CreateProduct)
-			authRouter.Post("/dashboard/products/{id}/delete", dashboardController.DeleteProduct)
-			authRouter.Post("/dashboard/rfqs/quote", dashboardController.SubmitRfqQuote)
+	facades.Route().Middleware(sessionmiddleware.StartSession(), appmiddleware.SameOrigin(), appmiddleware.HandleInertiaRequests()).Group(func(router route.Router) {
+		store := controllers.NewStoreController()
+		auth := controllers.NewAuthController()
+		dashboard := controllers.NewDashboardController()
+		commerce := controllers.NewCommerceController()
+		router.Get("/", store.Index)
+		router.Get("/products/{id}", store.Show)
+		router.Get("/cart", commerce.Cart)
+		router.Post("/cart/items", commerce.AddItem)
+		router.Post("/cart/items/{id}", commerce.UpdateItem)
+		router.Post("/cart/items/{id}/delete", commerce.RemoveItem)
+		router.Get("/login", auth.ShowLogin)
+		router.Post("/login", auth.Login)
+		router.Get("/register", auth.ShowRegister)
+		router.Post("/register", auth.Register)
+		router.Post("/logout", auth.Logout)
+		router.Middleware(appmiddleware.AuthRequired()).Group(func(r route.Router) {
+			r.Post("/checkout", commerce.Checkout)
+			r.Get("/checkout", commerce.Cart)
+			r.Post("/make-offer", store.MakeOffer)
+			r.Post("/rfqs", store.CreateRfq)
+			r.Get("/account", commerce.Account)
+			r.Post("/account/orders/{id}/cancel", commerce.CancelOrder)
+			r.Post("/account/rfqs/{id}/quotes/{quoteId}/accept", commerce.AcceptQuote)
+			r.Post("/account/rfqs/{id}/close", commerce.CloseRfq)
+			r.Get("/dashboard", dashboard.Index)
+			r.Post("/dashboard/products", dashboard.CreateProduct)
+			r.Post("/dashboard/products/{id}", dashboard.UpdateProduct)
+			r.Post("/dashboard/products/{id}/delete", dashboard.DeleteProduct)
+			r.Post("/dashboard/rfqs/quote", dashboard.SubmitRfqQuote)
+			r.Post("/dashboard/offers/{id}/decision", dashboard.DecideOffer)
+			r.Post("/dashboard/content", controllers.NewContentController().Save)
 		})
 	})
 }

@@ -1,6 +1,55 @@
 {
+  "_SokoDialog.vue_vue_type_script_setup_true_lang-bzQd6BMd.js": {
+    "file": "assets/SokoDialog.vue_vue_type_script_setup_true_lang-bzQd6BMd.js",
+    "name": "SokoDialog.vue_vue_type_script_setup_true_lang",
+    "imports": [
+      "resources/js/app.ts"
+    ]
+  },
+  "_sourcing-harbor-D1c8Q41a.js": {
+    "file": "assets/sourcing-harbor-D1c8Q41a.js",
+    "name": "sourcing-harbor",
+    "assets": [
+      "assets/sourcing-harbor-CizCQW0h.jpg"
+    ]
+  },
+  "_useMarketplaceForm-BbB67qTI.js": {
+    "file": "assets/useMarketplaceForm-BbB67qTI.js",
+    "name": "useMarketplaceForm",
+    "imports": [
+      "resources/js/app.ts"
+    ]
+  },
+  "_workspace-BwmGIuEj.css": {
+    "file": "assets/workspace-BwmGIuEj.css",
+    "src": "_workspace-BwmGIuEj.css"
+  },
+  "node_modules/@fontsource-variable/manrope/files/manrope-cyrillic-wght-normal.woff2": {
+    "file": "assets/manrope-cyrillic-wght-normal-Dvxsihut.woff2",
+    "src": "node_modules/@fontsource-variable/manrope/files/manrope-cyrillic-wght-normal.woff2"
+  },
+  "node_modules/@fontsource-variable/manrope/files/manrope-greek-wght-normal.woff2": {
+    "file": "assets/manrope-greek-wght-normal-DL7QRZyv.woff2",
+    "src": "node_modules/@fontsource-variable/manrope/files/manrope-greek-wght-normal.woff2"
+  },
+  "node_modules/@fontsource-variable/manrope/files/manrope-latin-ext-wght-normal.woff2": {
+    "file": "assets/manrope-latin-ext-wght-normal-Ch3YOpNY.woff2",
+    "src": "node_modules/@fontsource-variable/manrope/files/manrope-latin-ext-wght-normal.woff2"
+  },
+  "node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2": {
+    "file": "assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+    "src": "node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2"
+  },
+  "node_modules/@fontsource-variable/manrope/files/manrope-vietnamese-wght-normal.woff2": {
+    "file": "assets/manrope-vietnamese-wght-normal-usUDDRr7.woff2",
+    "src": "node_modules/@fontsource-variable/manrope/files/manrope-vietnamese-wght-normal.woff2"
+  },
+  "public/images/sourcing-harbor.jpg": {
+    "file": "assets/sourcing-harbor-CizCQW0h.jpg",
+    "src": "public/images/sourcing-harbor.jpg"
+  },
   "resources/js/Pages/About.vue": {
-    "file": "assets/About-ILp6TOsS.js",
+    "file": "assets/About-F_IW8Fqs.js",
     "name": "About",
     "src": "resources/js/Pages/About.vue",
     "isDynamicEntry": true,
@@ -11,26 +60,45 @@
       "assets/About-DehBZc3C.css"
     ]
   },
+  "resources/js/Pages/Account/Index.vue": {
+    "file": "assets/Index-v88kOHAn.js",
+    "name": "Index",
+    "src": "resources/js/Pages/Account/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts",
+      "_SokoDialog.vue_vue_type_script_setup_true_lang-bzQd6BMd.js",
+      "_useMarketplaceForm-BbB67qTI.js"
+    ]
+  },
   "resources/js/Pages/Auth/Login.vue": {
-    "file": "assets/Login-YdP7MiaK.js",
+    "file": "assets/Login-DM5NO-67.js",
     "name": "Login",
     "src": "resources/js/Pages/Auth/Login.vue",
     "isDynamicEntry": true,
     "imports": [
-      "resources/js/app.ts"
+      "resources/js/app.ts",
+      "_sourcing-harbor-D1c8Q41a.js"
+    ],
+    "css": [
+      "assets/workspace-BwmGIuEj.css"
     ]
   },
   "resources/js/Pages/Auth/Register.vue": {
-    "file": "assets/Register-D1NvMsdZ.js",
+    "file": "assets/Register-C3mIlvJL.js",
     "name": "Register",
     "src": "resources/js/Pages/Auth/Register.vue",
     "isDynamicEntry": true,
     "imports": [
-      "resources/js/app.ts"
+      "resources/js/app.ts",
+      "_sourcing-harbor-D1c8Q41a.js"
+    ],
+    "css": [
+      "assets/workspace-BwmGIuEj.css"
     ]
   },
   "resources/js/Pages/Contact.vue": {
-    "file": "assets/Contact-CJuELPtN.js",
+    "file": "assets/Contact-CStfJIVy.js",
     "name": "Contact",
     "src": "resources/js/Pages/Contact.vue",
     "isDynamicEntry": true,
@@ -42,16 +110,20 @@
     ]
   },
   "resources/js/Pages/Dashboard/Index.vue": {
-    "file": "assets/Index-BtcwvDPE.js",
+    "file": "assets/Index-i97LXGUp.js",
     "name": "Index",
     "src": "resources/js/Pages/Dashboard/Index.vue",
     "isDynamicEntry": true,
     "imports": [
-      "resources/js/app.ts"
+      "resources/js/app.ts",
+      "_SokoDialog.vue_vue_type_script_setup_true_lang-bzQd6BMd.js"
+    ],
+    "css": [
+      "assets/workspace-BwmGIuEj.css"
     ]
   },
   "resources/js/Pages/Feed.vue": {
-    "file": "assets/Feed-EeWiYZBE.js",
+    "file": "assets/Feed-DrJy-6Jd.js",
     "name": "Feed",
     "src": "resources/js/Pages/Feed.vue",
     "isDynamicEntry": true,
@@ -63,7 +135,7 @@
     ]
   },
   "resources/js/Pages/Home.vue": {
-    "file": "assets/Home-DpVKaogm.js",
+    "file": "assets/Home-CILPOGiY.js",
     "name": "Home",
     "src": "resources/js/Pages/Home.vue",
     "isDynamicEntry": true,
@@ -77,42 +149,64 @@
       "assets/goravel-inertia-CTHQC0c9.png"
     ]
   },
+  "resources/js/Pages/Store/Cart.vue": {
+    "file": "assets/Cart-BItdE2F-.js",
+    "name": "Cart",
+    "src": "resources/js/Pages/Store/Cart.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.ts",
+      "_useMarketplaceForm-BbB67qTI.js"
+    ]
+  },
   "resources/js/Pages/Store/Index.vue": {
-    "file": "assets/Index-Cf7btmCF.js",
+    "file": "assets/Index-CDvrGMPq.js",
     "name": "Index",
     "src": "resources/js/Pages/Store/Index.vue",
     "isDynamicEntry": true,
     "imports": [
-      "resources/js/app.ts"
+      "resources/js/app.ts",
+      "_SokoDialog.vue_vue_type_script_setup_true_lang-bzQd6BMd.js"
     ]
   },
   "resources/js/Pages/Store/ProductDetail.vue": {
-    "file": "assets/ProductDetail-CQP5LO2U.js",
+    "file": "assets/ProductDetail-CqEvjlyH.js",
     "name": "ProductDetail",
     "src": "resources/js/Pages/Store/ProductDetail.vue",
     "isDynamicEntry": true,
     "imports": [
-      "resources/js/app.ts"
+      "resources/js/app.ts",
+      "_SokoDialog.vue_vue_type_script_setup_true_lang-bzQd6BMd.js",
+      "_useMarketplaceForm-BbB67qTI.js"
     ]
   },
   "resources/js/app.ts": {
-    "file": "assets/app-BPgOOUWi.js",
+    "file": "assets/app-CgCkgF4M.js",
     "name": "app",
     "src": "resources/js/app.ts",
     "isEntry": true,
     "dynamicImports": [
       "resources/js/Pages/About.vue",
+      "resources/js/Pages/Account/Index.vue",
       "resources/js/Pages/Auth/Login.vue",
       "resources/js/Pages/Auth/Register.vue",
       "resources/js/Pages/Contact.vue",
       "resources/js/Pages/Dashboard/Index.vue",
       "resources/js/Pages/Feed.vue",
       "resources/js/Pages/Home.vue",
+      "resources/js/Pages/Store/Cart.vue",
       "resources/js/Pages/Store/Index.vue",
       "resources/js/Pages/Store/ProductDetail.vue"
     ],
     "css": [
-      "assets/app-CeyUYZYQ.css"
+      "assets/app-w19s7JyY.css"
+    ],
+    "assets": [
+      "assets/manrope-cyrillic-wght-normal-Dvxsihut.woff2",
+      "assets/manrope-greek-wght-normal-DL7QRZyv.woff2",
+      "assets/manrope-vietnamese-wght-normal-usUDDRr7.woff2",
+      "assets/manrope-latin-ext-wght-normal-Ch3YOpNY.woff2",
+      "assets/manrope-latin-wght-normal-DHIcAJRg.woff2"
     ]
   },
   "resources/js/assets/goravel-inertia.png": {

@@ -6,6 +6,7 @@ import (
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
 
+	appmiddleware "elcomware/app/http/middleware"
 	"elcomware/app/http/requests"
 	"elcomware/app/models"
 	"elcomware/app/queries"
@@ -35,28 +36,25 @@ func NewStoreController() *StoreController {
 }
 
 func (s *StoreController) getAuthenticatedUser(ctx http.Context) *models.User {
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
-		if uid, ok := ctx.Request().Session().Get("user_id").(string); ok && uid != "" {
-			if u, err := s.authService.GetUserByID(uid); err == nil && u != nil {
-				return u
-			}
-		}
-	}
-	return nil
+	return appmiddleware.CurrentUser(ctx)
 }
 
 func (s *StoreController) Index(ctx http.Context) http.Response {
 	filter := queries.ProductFilter{
 		Type:      ctx.Request().Query("type", "all"),
 		Format:    ctx.Request().Query("format", "all"),
-		Region:    ctx.Request().Query("region", "global"),
+		Region:    models.NormalizeRegion(ctx.Request().Query("region", "global")),
 		Category:  ctx.Request().Query("category", "all"),
 		Condition: ctx.Request().Query("condition", "all"),
 		Query:     ctx.Request().Query("q", ""),
 	}
 
-	products, _ := s.catalogService.GetProducts(filter)
-	stats, _ := s.dashboardService.GetStats()
+	products, err := s.catalogService.GetProducts(filter)
+	if err != nil {
+		return ctx.Response().String(http.StatusInternalServerError, "The catalog could not be loaded. Please try again.")
+	}
+	products = models.PublicProducts(products)
+	stats := map[string]any{"total_products": len(products)}
 	currencies := s.currencyService.GetCurrencies()
 	regions := s.currencyService.GetRegions()
 	rfqs, _ := s.rfqService.GetOpenRfqs()
@@ -72,25 +70,26 @@ func (s *StoreController) Index(ctx http.Context) http.Response {
 	}
 
 	return inertiafacades.Inertia().Render(ctx, "Store/Index", map[string]any{
-		"products":        products,
-		"categories":      categories,
-		"currencies":      currencies,
-		"regions":         regions,
-		"rfqs":            rfqs,
-		"activeType":      filter.Type,
-		"activeFormat":    filter.Format,
-		"activeRegion":    filter.Region,
-		"activeCategory":  filter.Category,
-		"activeCondition": filter.Condition,
-		"searchQuery":     filter.Query,
-		"stats":           stats,
+		"products":          products,
+		"storefrontContent": queries.LoadStorefrontContent(),
+		"categories":        categories,
+		"currencies":        currencies,
+		"regions":           regions,
+		"rfqs":              rfqs,
+		"activeType":        filter.Type,
+		"activeFormat":      filter.Format,
+		"activeRegion":      filter.Region,
+		"activeCategory":    filter.Category,
+		"activeCondition":   filter.Condition,
+		"searchQuery":       filter.Query,
+		"stats":             stats,
 	})
 }
 
 func (s *StoreController) Show(ctx http.Context) http.Response {
 	id := ctx.Request().Route("id")
 	product, err := s.catalogService.GetProductByID(id)
-	if err != nil || product == nil {
+	if err != nil || product == nil || product.ID == "" {
 		ctx.Request().Session().Flash("error", "Product not found.")
 		return ctx.Response().Redirect(http.StatusFound, "/")
 	}
@@ -111,39 +110,15 @@ func (s *StoreController) Show(ctx http.Context) http.Response {
 	regions := s.currencyService.GetRegions()
 
 	return inertiafacades.Inertia().Render(ctx, "Store/ProductDetail", map[string]any{
-		"product":    product,
-		"related":    filteredRelated,
+		"product":    product.Public(),
+		"related":    models.PublicProducts(filteredRelated),
 		"currencies": currencies,
 		"regions":    regions,
 	})
 }
 
 func (s *StoreController) Checkout(ctx http.Context) http.Response {
-	var req requests.CheckoutRequest
-	errors, err := ctx.Request().ValidateRequest(&req)
-	if err != nil || errors != nil {
-		errorMsg := "Invalid checkout inputs."
-		if errors != nil {
-			errorMsg = errors.One()
-		}
-		ctx.Request().Session().Flash("error", errorMsg)
-		return ctx.Response().Redirect(http.StatusFound, "/")
-	}
-
-	currentUser := s.getAuthenticatedUser(ctx)
-	order, err := s.orderService.PlaceOrder(&req, currentUser)
-	if err != nil {
-		ctx.Request().Session().Flash("error", "Failed to place order: "+err.Error())
-		return ctx.Response().Redirect(http.StatusFound, "/")
-	}
-
-	if order.HasDigital {
-		ctx.Request().Session().Flash("success", "Escrow Verified! Automated license key issued & instant download token ready.")
-	} else {
-		ctx.Request().Session().Flash("success", fmt.Sprintf("Wholesale order %s placed under Soko Trade Escrow! Supplier dispatched notification.", order.OrderNumber))
-	}
-
-	return ctx.Response().Redirect(http.StatusFound, "/dashboard")
+	return NewCommerceController().Checkout(ctx)
 }
 
 // Make an Offer (eBay Style)
@@ -190,6 +165,6 @@ func (s *StoreController) CreateRfq(ctx http.Context) http.Response {
 		return ctx.Response().Redirect(http.StatusFound, "/#rfq")
 	}
 
-	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise RFQ %s published to global suppliers! You will receive quotations within 24 hours.", rfq.RfqNumber))
+	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise RFQ %s published to global suppliers! Suppliers can now submit quotations.", rfq.RfqNumber))
 	return ctx.Response().Redirect(http.StatusFound, "/#rfq")
 }

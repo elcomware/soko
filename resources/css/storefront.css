@@ -1,0 +1,1266 @@
+/* Immersive storefront: the trade scene carries expression; buying tools stay quiet. */
+.storefront.immersive-storefront {
+    --storefront-header-height: 174px;
+    --soko-scene-ink: #0d283b;
+    --soko-scene-accent: #e4bb79;
+    padding-top: 0;
+    padding-bottom: 80px;
+}
+.immersive-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: var(--soko-scene-ink);
+    color: white;
+    min-height: max(520px, calc(100svh - var(--storefront-header-height)));
+}
+.immersive-visual,
+.immersive-shade {
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    overflow: hidden;
+}
+.immersive-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 54%;
+    opacity: 0;
+    transform: scale(1.04);
+    transition: opacity 900ms ease;
+}
+.immersive-backdrop.is-active {
+    opacity: 1;
+    animation: scene-drift 24s ease-in-out alternate infinite;
+}
+.immersive-shade {
+    z-index: -1;
+    background:
+        linear-gradient(90deg, #0b263ced 0%, #0b263cbd 40%, #0b263c3d 77%),
+        linear-gradient(0deg, #0b263cf2 0%, #0b263c00 44%, #0b263c20 100%);
+}
+.trade-route {
+    position: absolute;
+    right: -7%;
+    top: 0;
+    width: 80%;
+    height: 100%;
+    z-index: -1;
+    opacity: 0.4;
+    pointer-events: none;
+}
+.trade-route path {
+    stroke-width: 1;
+}
+.route-track {
+    stroke: #e5c58e66;
+}
+.route-flow {
+    stroke: #f8dbab;
+    stroke-dasharray: 10 240;
+    animation: route-travel 16s linear infinite;
+}
+.trade-route circle {
+    fill: #f1d1a0;
+    stroke: #f1d1a033;
+    stroke-width: 18px;
+}
+.immersive-inner {
+    position: relative;
+    min-height: inherit;
+    padding-top: clamp(32px, 3.2vw, 64px);
+    padding-bottom: 124px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.immersive-copy {
+    width: min(740px, 73%);
+    padding-bottom: 12px;
+}
+.immersive-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #e1e8ed;
+    text-transform: uppercase;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2.1px;
+    margin-bottom: 24px;
+}
+.immersive-eyebrow > span {
+    width: 26px;
+    height: 1px;
+    background: var(--soko-scene-accent);
+    flex-shrink: 0;
+}
+.immersive-copy h1 {
+    color: #fff;
+    font-size: clamp(52px, 6vw, 90px);
+    line-height: 1.07;
+    font-weight: 650;
+    letter-spacing: -3.8px;
+    margin: 0 0 22px;
+}
+.immersive-copy h1 span {
+    color: var(--soko-scene-accent);
+}
+.immersive-description {
+    max-width: 440px;
+    font-size: 14px;
+    color: #e1e8ed;
+    line-height: 1.9;
+    min-height: 72px;
+}
+.story-copy {
+    animation: story-enter 500ms ease both;
+}
+.hero-story-label {
+    display: none;
+}
+.immersive-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 28px;
+    margin-top: 24px;
+}
+.immersive-actions .button {
+    min-height: 48px;
+    padding-inline: 22px;
+    font-size: 12px;
+}
+.immersive-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    border: 0;
+    border-bottom: 1px solid #e0e7ed66;
+    background: transparent;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 650;
+    min-height: 40px;
+}
+.immersive-secondary .soko-icon {
+    width: 15px;
+    height: 15px;
+    transition: transform 0.2s;
+}
+.immersive-secondary:hover {
+    color: var(--soko-scene-accent);
+    border-bottom-color: var(--soko-scene-accent);
+}
+.immersive-secondary:hover .soko-icon {
+    transform: translateX(3px);
+}
+.hero-market-card {
+    position: absolute;
+    right: 40px;
+    bottom: 152px;
+    width: 290px;
+    background: #fbfaf6f7;
+    color: var(--soko-ink);
+    border: 1px solid #fff9;
+    border-top: 2px solid var(--soko-scene-accent);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 12px 40px #071a2926;
+    transition:
+        transform 0.3s,
+        background 0.3s;
+}
+.hero-market-card:hover {
+    transform: translateY(-4px);
+    background: white;
+}
+.market-card-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    text-transform: uppercase;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 1.3px;
+    color: #657279;
+    margin-bottom: 14px;
+}
+.market-card-label .soko-icon {
+    width: 13px;
+    height: 13px;
+}
+.market-card-product {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.market-card-product img {
+    width: 62px;
+    height: 66px;
+    flex-shrink: 0;
+    border-radius: 5px;
+    object-fit: cover;
+}
+.market-card-product > div {
+    min-width: 0;
+}
+.market-card-product span {
+    display: block;
+    color: #657279;
+    font-size: 8px;
+    margin-bottom: 4px;
+}
+.market-card-product h2 {
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.65;
+}
+.market-card-bottom {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #d4dce1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.market-card-bottom strong {
+    font-size: 21px;
+    font-weight: 800;
+    letter-spacing: -0.8px;
+    overflow-wrap: anywhere;
+}
+.market-card-bottom small {
+    display: block;
+    color: #657279;
+    font-size: 9px;
+    margin-top: 3px;
+}
+.market-card-arrow {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid #b9c7d0;
+}
+.market-card-arrow .soko-icon {
+    width: 15px;
+    height: 15px;
+}
+.hero-bottom-bar {
+    position: absolute;
+    bottom: 32px;
+    inset-inline: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    border-top: 1px solid #e1e8ed33;
+    padding-top: 20px;
+}
+.story-selectors {
+    display: flex;
+    gap: 32px;
+}
+.story-selectors button {
+    background: transparent;
+    color: #e0e6e9b3;
+    border: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    position: relative;
+    padding: 4px 0;
+}
+.story-selectors button::before {
+    content: '';
+    position: absolute;
+    top: -21px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--soko-scene-accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s;
+}
+.story-selectors button[aria-pressed='true'] {
+    color: white;
+}
+.story-selectors button[aria-pressed='true']::before {
+    transform: scaleX(1);
+}
+.story-selectors button:hover {
+    color: var(--soko-scene-accent);
+}
+.story-selectors .soko-icon {
+    width: 22px;
+    height: 22px;
+}
+.story-selectors strong {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+}
+.story-selectors small {
+    display: block;
+    font-size: 9px;
+    margin-top: 3px;
+    color: #e0e6e9b3;
+}
+.motion-toggle {
+    color: #e1e8ed;
+    border: 1px solid #e1e8ed4d;
+    border-radius: 30px;
+    background: #0c233d33;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 9px;
+    min-height: 34px;
+    min-width: 112px;
+    justify-content: center;
+}
+.motion-toggle .soko-icon {
+    width: 12px;
+    height: 12px;
+}
+.motion-toggle:hover:not(:disabled) {
+    background: #ffffff1a;
+}
+.hero-scroll-link {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 8px;
+    color: #c7d4dd;
+    font-size: 7px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    display: inline-flex;
+    gap: 9px;
+    align-items: center;
+}
+.hero-scroll-link .soko-icon {
+    width: 12px;
+    height: 12px;
+}
+.storefront-benefits {
+    background: #eaf0f2;
+    border-bottom: 1px solid #d8e2e7;
+}
+.storefront-benefits .benefit-strip {
+    border: 0;
+    padding: 25px 40px;
+}
+.storefront-benefits .benefit {
+    justify-content: start;
+}
+.storefront-benefits .benefit + .benefit {
+    padding-left: 36px;
+    border-color: #cbd8df;
+}
+.storefront-benefits .benefit > .soko-icon {
+    color: #426275;
+}
+.storefront-benefits .benefit strong {
+    font-size: 12px;
+}
+.storefront-benefits .benefit span {
+    font-size: 10px;
+}
+.storefront-sections {
+    padding-top: 64px;
+}
+.immersive-storefront .section-heading h2 {
+    font-size: clamp(25px, 2.8vw, 38px);
+    line-height: 1.3;
+    letter-spacing: -1.5px;
+    font-weight: 650;
+}
+.immersive-storefront .section-heading .eyebrow {
+    color: #88704e;
+    font-size: 9px;
+    letter-spacing: 1.8px;
+    margin-bottom: 8px;
+}
+.section-explore {
+    display: inline-flex;
+    gap: 12px;
+    align-items: center;
+    color: var(--soko-ink);
+    font-size: 11px;
+    font-weight: 700;
+    padding-bottom: 7px;
+    border-bottom: 1px solid #9cadb9;
+    white-space: nowrap;
+}
+.section-explore .soko-icon {
+    width: 15px;
+    height: 15px;
+}
+.section-explore:hover {
+    color: #826333;
+}
+.sector-section {
+    scroll-margin-top: 28px;
+}
+.sector-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr 1fr;
+    gap: 20px;
+    margin-top: 28px;
+}
+.sector-card {
+    position: relative;
+    overflow: hidden;
+    min-height: 310px;
+    color: white;
+    border-radius: 9px;
+    background: var(--soko-navy);
+    isolation: isolate;
+}
+.sector-card > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.7s ease;
+    z-index: -2;
+}
+.sector-card-shade {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(0deg, #0b253bf5, #0b253b26 85%);
+}
+.sector-card-content {
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    justify-content: flex-end;
+    min-height: inherit;
+    padding: 28px;
+}
+.sector-card-content > .soko-icon {
+    width: 25px;
+    height: 25px;
+    color: #e9c48b;
+    margin-bottom: auto;
+}
+.sector-card-content p {
+    color: #e0e8ee;
+    font-size: 9px;
+    margin-bottom: 8px;
+}
+.sector-card h3 {
+    font-size: 27px;
+    line-height: 1.25;
+    letter-spacing: -1px;
+    font-weight: 600;
+    max-width: 240px;
+}
+.sector-card-action {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 10px;
+    margin-top: 22px;
+    width: 100%;
+    border-top: 1px solid #dfe8ee66;
+    padding-top: 14px;
+}
+.sector-card-action .soko-icon {
+    margin-left: auto;
+    width: 17px;
+    height: 17px;
+    transition: transform 0.3s;
+}
+.immersive-storefront .catalog-section {
+    padding-top: 72px;
+}
+.immersive-storefront .catalog-toolbar {
+    margin-bottom: 22px;
+}
+.immersive-storefront .format-tabs button {
+    padding: 9px 13px;
+    font-size: 11px;
+}
+.immersive-storefront .product-body h3 {
+    font-size: 13px;
+    min-height: 64px;
+}
+.immersive-storefront .product-category {
+    font-size: 9px;
+}
+.immersive-storefront .supplier-line,
+.immersive-storefront .product-meta {
+    font-size: 10px;
+}
+.immersive-storefront .product-price {
+    font-size: 24px;
+}
+.immersive-storefront .product-actions .button {
+    min-height: 39px;
+    font-size: 10px;
+}
+.immersive-storefront .product-card {
+    transition:
+        transform 0.28s,
+        border-color 0.28s,
+        box-shadow 0.28s;
+}
+.sourcing-studio {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 64px;
+    padding: 52px;
+    margin-top: 72px;
+    border-radius: 12px;
+    background: #143447;
+    color: white;
+    overflow: hidden;
+    position: relative;
+}
+.sourcing-studio::before {
+    content: '';
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    right: -200px;
+    top: -230px;
+    border: 1px solid #c4d4df20;
+    border-radius: 50%;
+    box-shadow:
+        0 0 0 60px #c4d4df08,
+        0 0 0 120px #c4d4df05;
+    pointer-events: none;
+}
+.sourcing-studio .eyebrow {
+    color: var(--soko-scene-accent);
+    font-size: 9px;
+}
+.sourcing-studio h2 {
+    margin-top: 18px;
+    font-size: 39px;
+    letter-spacing: -1.6px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+.sourcing-studio-copy > p:not(.eyebrow) {
+    color: #cfdee8;
+    font-size: 12px;
+    line-height: 1.9;
+    max-width: 350px;
+    margin-top: 18px;
+}
+.sourcing-studio .button {
+    margin-top: 24px;
+}
+.sourcing-studio-steps {
+    align-self: center;
+    position: relative;
+}
+.sourcing-studio-steps > div {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 22px 0;
+    border-bottom: 1px solid #c4d4df33;
+}
+.sourcing-studio-steps > div:last-child {
+    border: 0;
+}
+.sourcing-studio-steps > div > span {
+    color: #a8becc;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.sourcing-studio-steps h3 {
+    font-size: 14px;
+    font-weight: 600;
+}
+.sourcing-studio-steps p {
+    color: #bbcfdb;
+    font-size: 10px;
+    margin-top: 4px;
+}
+.sourcing-studio-steps .soko-icon {
+    margin-left: auto;
+    color: var(--soko-scene-accent);
+    width: 21px;
+    height: 21px;
+}
+.immersive-storefront .rfq-section {
+    margin-top: 72px;
+}
+.request-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 28px;
+}
+.request-card {
+    padding: 28px;
+    border: 1px solid var(--soko-line);
+    background: white;
+    border-radius: 10px;
+    transition:
+        border-color 0.3s,
+        box-shadow 0.3s;
+}
+.request-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 22px;
+}
+.request-card-top > span {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 10px;
+    color: #516b7c;
+}
+.request-card-top .soko-icon {
+    width: 17px;
+    height: 17px;
+}
+.request-card-top > small {
+    background: #edf3f4;
+    color: #496473;
+    padding: 4px 8px;
+    font-size: 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+.request-card h3 {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.5px;
+    line-height: 1.5;
+    min-height: 58px;
+}
+.request-reference {
+    font-size: 9px;
+    color: #738491;
+    margin-top: 10px;
+    letter-spacing: 0.4px;
+}
+.request-facts {
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    gap: 18px;
+    padding-block: 22px;
+    margin-top: 20px;
+    border-block: 1px solid var(--soko-line);
+}
+.request-facts dt {
+    font-size: 9px;
+    color: var(--soko-muted);
+    margin-bottom: 6px;
+}
+.request-facts dd {
+    font-size: 17px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}
+.request-facts dd small {
+    font-size: 10px;
+    font-weight: 400;
+}
+.request-destination {
+    grid-column: 1 / -1;
+}
+.request-destination dd {
+    font-size: 12px;
+    font-weight: 600;
+}
+.request-quote-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--soko-ink);
+    padding-top: 20px;
+    font-size: 11px;
+    font-weight: 750;
+}
+.request-quote-link > span {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #bccbd6;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    transition: background 0.2s;
+}
+.request-quote-link .soko-icon {
+    width: 15px;
+    height: 15px;
+}
+.request-quote-link:hover > span {
+    background: var(--soko-amber);
+    border-color: var(--soko-amber);
+}
+.reveal-ready .reveal-item {
+    transition: transform 650ms cubic-bezier(0.2, 0.65, 0.25, 1);
+}
+.reveal-ready .reveal-item:not(.is-revealed) {
+    transform: translateY(24px);
+}
+@keyframes scene-drift {
+    from {
+        transform: scale(1.04) translateX(0);
+    }
+    to {
+        transform: scale(1.12) translateX(-1%);
+    }
+}
+@keyframes route-travel {
+    to {
+        stroke-dashoffset: -1000;
+    }
+}
+@keyframes story-enter {
+    from {
+        opacity: 0.35;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.ambient-paused .immersive-backdrop,
+.ambient-paused .route-flow {
+    animation-play-state: paused;
+}
+.motion-disabled .story-copy {
+    animation: none;
+}
+.immersive-storefront.motion-disabled .sector-card img,
+.immersive-storefront.motion-disabled .product-card,
+.immersive-storefront.motion-disabled .hero-market-card,
+.immersive-storefront.motion-disabled .reveal-item {
+    transform: none;
+    transition: none;
+}
+@media (hover: hover) {
+    .sector-card:hover img {
+        transform: scale(1.05);
+    }
+    .sector-card:hover .sector-card-action .soko-icon {
+        transform: translateX(4px);
+    }
+    .immersive-storefront:not(.motion-disabled) .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 28px #142f4812;
+    }
+    .request-card:hover {
+        border-color: #9ab1bf;
+        box-shadow: 0 6px 20px #142f4809;
+    }
+}
+@media (min-width: 1600px) {
+    .immersive-copy {
+        width: 780px;
+    }
+    .immersive-copy h1 {
+        font-size: 90px;
+    }
+    .immersive-description {
+        font-size: 16px;
+        max-width: 510px;
+    }
+}
+@media (max-width: 1100px) {
+    .hero-market-card {
+        right: 28px;
+        width: 250px;
+        bottom: 156px;
+    }
+    .immersive-copy {
+        width: 70%;
+    }
+    .immersive-copy h1 {
+        font-size: 62px;
+    }
+    .immersive-description {
+        max-width: 380px;
+        font-size: 13px;
+    }
+    .hero-bottom-bar {
+        inset-inline: 28px;
+    }
+    .story-selectors {
+        gap: 24px;
+    }
+    .story-selectors button {
+        gap: 9px;
+    }
+    .story-selectors strong {
+        font-size: 10px;
+    }
+    .sector-card-content {
+        padding: 22px;
+    }
+    .sector-card h3 {
+        font-size: 24px;
+    }
+    .sourcing-studio {
+        padding: 40px;
+        gap: 40px;
+    }
+    .sourcing-studio h2 {
+        font-size: 33px;
+    }
+}
+@media (max-width: 900px) {
+    .hero-market-card {
+        display: none;
+    }
+    .immersive-copy {
+        width: 90%;
+        max-width: 620px;
+    }
+    .immersive-copy h1 {
+        font-size: 66px;
+    }
+    .immersive-inner {
+        padding-block: 56px 128px;
+    }
+    .story-selectors {
+        gap: 20px;
+    }
+    .story-selectors small {
+        display: none;
+    }
+    .story-selectors strong {
+        font-size: 10px;
+    }
+    .story-selectors .soko-icon {
+        width: 18px;
+        height: 18px;
+    }
+    .hero-bottom-bar {
+        padding-top: 20px;
+    }
+    .storefront-benefits .benefit-strip {
+        padding-inline: 28px;
+    }
+    .storefront-benefits .benefit + .benefit {
+        padding-left: 20px;
+    }
+    .storefront-benefits .benefit strong {
+        font-size: 10px;
+    }
+    .storefront-benefits .benefit span {
+        font-size: 9px;
+    }
+    .sector-card {
+        min-height: 290px;
+    }
+    .sector-grid {
+        gap: 14px;
+    }
+    .sector-card h3 {
+        font-size: 21px;
+    }
+    .sector-card-content {
+        padding: 20px;
+    }
+    .sector-card-content p {
+        font-size: 8px;
+    }
+    .sourcing-studio {
+        grid-template-columns: 1fr 1fr;
+        padding: 32px;
+        gap: 32px;
+    }
+    .sourcing-studio h2 {
+        font-size: 30px;
+    }
+    .sourcing-studio-steps h3 {
+        font-size: 12px;
+    }
+    .request-card {
+        padding: 22px;
+    }
+    .request-card h3 {
+        font-size: 17px;
+        min-height: 78px;
+    }
+}
+@media (max-width: 640px) {
+    .immersive-storefront {
+        padding-bottom: 48px;
+    }
+    .immersive-hero {
+        min-height: max(580px, calc(100svh - var(--storefront-header-height)));
+    }
+    .immersive-shade {
+        background:
+            linear-gradient(90deg, #0b263ce8, #0b263c91),
+            linear-gradient(0deg, #0b263cf5, #0b263c11 72%);
+    }
+    .immersive-backdrop {
+        object-position: 62% center;
+    }
+    .immersive-inner {
+        padding: 36px 24px 132px;
+        justify-content: center;
+    }
+    .immersive-copy {
+        width: 100%;
+        padding-bottom: 0;
+    }
+    .immersive-eyebrow {
+        font-size: 7px;
+        letter-spacing: 1.4px;
+        line-height: 1.8;
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+    .immersive-eyebrow > span {
+        width: 18px;
+    }
+    .immersive-copy h1 {
+        font-size: clamp(40px, 10.8vw, 56px);
+        letter-spacing: -1.8px;
+        line-height: 1.13;
+        margin-bottom: 20px;
+    }
+    .immersive-description {
+        max-width: 350px;
+        font-size: 13px;
+        line-height: 1.85;
+        min-height: 100px;
+    }
+    .immersive-actions {
+        gap: 12px 20px;
+        margin-top: 20px;
+    }
+    .immersive-actions .button {
+        min-height: 44px;
+        padding: 10px 16px;
+        font-size: 10px;
+        gap: 8px;
+    }
+    .immersive-secondary {
+        font-size: 10px;
+        gap: 7px;
+        min-height: 38px;
+    }
+    .hero-bottom-bar {
+        inset-inline: 24px;
+        bottom: 20px;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding-top: 16px;
+    }
+    .story-selectors {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+    .story-selectors button {
+        align-items: start;
+        gap: 7px;
+        padding: 3px 0;
+    }
+    .story-selectors button::before {
+        top: -17px;
+    }
+    .story-selectors .soko-icon {
+        display: none;
+    }
+    .story-selectors strong {
+        font-size: 9px;
+        line-height: 1.5;
+    }
+    .motion-toggle {
+        padding: 5px 9px;
+        min-height: 28px;
+        font-size: 8px;
+        min-width: 100px;
+        margin-left: auto;
+    }
+    .hero-scroll-link {
+        display: none;
+    }
+    .trade-route {
+        width: 150%;
+        right: -40%;
+        opacity: 0.2;
+    }
+    .storefront-benefits .benefit-strip {
+        padding: 20px;
+        gap: 12px;
+    }
+    .storefront-benefits .benefit + .benefit {
+        padding-left: 0;
+    }
+    .storefront-benefits .benefit strong {
+        font-size: 9px;
+        line-height: 1.7;
+    }
+    .storefront-benefits .benefit > .soko-icon {
+        width: 22px;
+        height: 22px;
+    }
+    .storefront-sections {
+        padding-top: 40px;
+    }
+    .immersive-storefront .section-heading h2 {
+        font-size: 27px;
+        letter-spacing: -1px;
+    }
+    .immersive-storefront .section-heading .eyebrow {
+        font-size: 8px;
+        letter-spacing: 1.1px;
+    }
+    .sector-section .section-heading {
+        align-items: start;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .section-explore {
+        font-size: 10px;
+    }
+    .sector-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        margin-top: 22px;
+    }
+    .sector-card {
+        min-height: 250px;
+    }
+    .sector-card-content {
+        padding: 24px;
+    }
+    .sector-card h3 {
+        font-size: 29px;
+        max-width: 260px;
+    }
+    .sector-card-content p {
+        font-size: 10px;
+    }
+    .sector-card-action {
+        font-size: 11px;
+        margin-top: 20px;
+    }
+    .immersive-storefront .catalog-section {
+        padding-top: 44px;
+    }
+    .immersive-storefront .catalog-section .section-heading h2 {
+        font-size: 24px;
+    }
+    .immersive-storefront .format-tabs {
+        gap: 2px;
+    }
+    .immersive-storefront .format-tabs button {
+        padding: 8px 7px;
+        font-size: 9px;
+    }
+    .immersive-storefront .product-body h3 {
+        font-size: 12px;
+        min-height: 80px;
+    }
+    .immersive-storefront .product-category {
+        font-size: 7px;
+    }
+    .immersive-storefront .supplier-line,
+    .immersive-storefront .product-meta {
+        font-size: 8px;
+    }
+    .immersive-storefront .product-price {
+        font-size: 20px;
+    }
+    .immersive-storefront .product-actions .button {
+        font-size: 10px;
+    }
+    .sourcing-studio {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 28px;
+        margin-top: 44px;
+    }
+    .sourcing-studio h2 {
+        font-size: 32px;
+    }
+    .sourcing-studio-copy > p:not(.eyebrow) {
+        font-size: 12px;
+    }
+    .sourcing-studio-steps > div {
+        padding: 18px 0;
+    }
+    .sourcing-studio-steps h3 {
+        font-size: 13px;
+    }
+    .sourcing-studio-steps p {
+        font-size: 10px;
+    }
+    .immersive-storefront .rfq-section {
+        margin-top: 44px;
+    }
+    .rfq-section .section-heading {
+        flex-direction: column;
+        gap: 16px;
+    }
+    .immersive-storefront .rfq-section .section-heading p:not(.eyebrow) {
+        max-width: none;
+        font-size: 12px;
+    }
+    .request-grid {
+        grid-template-columns: 1fr;
+        gap: 18px;
+        margin-top: 24px;
+    }
+    .request-card {
+        padding: 22px;
+    }
+    .request-card h3 {
+        min-height: 0;
+        font-size: 18px;
+    }
+    .request-facts dd {
+        font-size: 16px;
+    }
+    .request-destination dd {
+        font-size: 12px;
+    }
+    .request-card-top > span {
+        font-size: 9px;
+    }
+}
+@media (max-width: 359px) {
+    .immersive-copy h1 {
+        font-size: 37px;
+    }
+    .immersive-inner {
+        padding-inline: 20px;
+    }
+    .immersive-description {
+        font-size: 12px;
+    }
+    .hero-bottom-bar {
+        inset-inline: 20px;
+    }
+    .immersive-storefront .product-body h3 {
+        min-height: 0;
+        font-size: 14px;
+    }
+    .immersive-storefront .product-category {
+        font-size: 9px;
+    }
+    .immersive-storefront .supplier-line,
+    .immersive-storefront .product-meta {
+        font-size: 10px;
+    }
+    .immersive-storefront .product-price {
+        font-size: 24px;
+    }
+    .request-card-top {
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+}
+/* Motion is optional. Content and navigation remain visible with every effect disabled. */
+@media (prefers-reduced-motion: reduce) {
+    .immersive-backdrop.is-active,
+    .route-flow,
+    .story-copy {
+        animation: none;
+    }
+    .immersive-storefront .immersive-backdrop,
+    .immersive-storefront .sector-card img,
+    .immersive-storefront .product-card,
+    .immersive-storefront .hero-market-card,
+    .immersive-storefront.reveal-ready .reveal-item {
+        transform: none;
+        transition: none;
+    }
+}
+@media (forced-colors: active) {
+    .immersive-hero,
+    .sourcing-studio {
+        color: CanvasText;
+        background: Canvas;
+    }
+    .immersive-visual,
+    .immersive-shade,
+    .trade-route,
+    .sector-card-shade {
+        display: none;
+    }
+    .immersive-copy h1,
+    .immersive-copy h1 span,
+    .immersive-description,
+    .immersive-eyebrow,
+    .immersive-secondary,
+    .story-selectors button,
+    .sourcing-studio h2,
+    .sourcing-studio p {
+        color: CanvasText;
+    }
+    .sector-card,
+    .motion-toggle,
+    .hero-market-card {
+        border: 1px solid CanvasText;
+    }
+}
+
+/* The explicit motion control also covers inherited image zoom and small arrow movement. */
+.immersive-storefront.motion-disabled .product-card .product-image-link img,
+.immersive-storefront.motion-disabled .sector-card-action .soko-icon,
+.immersive-storefront.motion-disabled .immersive-secondary .soko-icon {
+    transform: none;
+    transition: none;
+}
+.immersive-storefront.motion-disabled .immersive-backdrop,
+.immersive-storefront.motion-disabled .story-selectors button::before {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .storefront.immersive-storefront .product-card .product-image-link img,
+    .storefront.immersive-storefront .sector-card-action .soko-icon,
+    .storefront.immersive-storefront .immersive-secondary .soko-icon {
+        transform: none;
+        transition: none;
+    }
+}
+
+.immersive-storefront .catalog-sort select {
+    max-width: 160px;
+    font: inherit;
+    font-size: 11px;
+    color: #526b79;
+    border: 1px solid #dbe4e9;
+    background: white;
+    padding: 9px 27px 9px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.immersive-storefront .catalog-sort {
+    margin-left: auto;
+}
+.immersive-storefront .catalog-toolbar {
+    flex-wrap: wrap;
+}
+.immersive-storefront .format-tabs {
+    min-width: 0;
+    max-width: 100%;
+}

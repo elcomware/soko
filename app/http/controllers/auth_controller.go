@@ -2,11 +2,13 @@ package controllers
 
 import (
 	"fmt"
+	frameworksession "github.com/goravel/framework/session"
 	"strings"
 
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
 
+	appmiddleware "elcomware/app/http/middleware"
 	"elcomware/app/http/requests"
 	"elcomware/app/models"
 	"elcomware/app/services"
@@ -23,7 +25,7 @@ func NewAuthController() *AuthController {
 }
 
 func (a *AuthController) ShowLogin(ctx http.Context) http.Response {
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
+	if appmiddleware.CurrentUser(ctx) != nil {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
 
@@ -72,6 +74,11 @@ func (a *AuthController) Login(ctx http.Context) http.Response {
 		return ctx.Response().Redirect(http.StatusFound, "/login")
 	}
 
+	if err := ctx.Request().Session().Regenerate(true); err != nil {
+		return ctx.Response().String(http.StatusInternalServerError, "Could not start a secure session.")
+	}
+	frameworksession.WriteCookie(ctx, ctx.Request().Session())
+	ctx.Request().Session().Forget("user")
 	ctx.Request().Session().Put("user_id", user.ID)
 	ctx.Request().Session().Put("user_email", user.Email)
 	ctx.Request().Session().Put("user_name", user.Name)
@@ -81,11 +88,11 @@ func (a *AuthController) Login(ctx http.Context) http.Response {
 	if user.Role == models.RoleAdmin || user.Role == models.RoleMerchant {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
-	return ctx.Response().Redirect(http.StatusFound, "/")
+	return ctx.Response().Redirect(http.StatusFound, "/account")
 }
 
 func (a *AuthController) ShowRegister(ctx http.Context) http.Response {
-	if ctx.Request().HasSession() && ctx.Request().Session().Get("user_id") != nil {
+	if appmiddleware.CurrentUser(ctx) != nil {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
 
@@ -134,6 +141,11 @@ func (a *AuthController) Register(ctx http.Context) http.Response {
 		return ctx.Response().Redirect(http.StatusFound, "/register")
 	}
 
+	if err := ctx.Request().Session().Regenerate(true); err != nil {
+		return ctx.Response().String(http.StatusInternalServerError, "Could not start a secure session.")
+	}
+	frameworksession.WriteCookie(ctx, ctx.Request().Session())
+	ctx.Request().Session().Forget("user")
 	ctx.Request().Session().Put("user_id", created.ID)
 	ctx.Request().Session().Put("user_email", created.Email)
 	ctx.Request().Session().Put("user_name", created.Name)
@@ -143,12 +155,16 @@ func (a *AuthController) Register(ctx http.Context) http.Response {
 	if created.Role == models.RoleMerchant || created.Role == models.RoleAdmin {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
-	return ctx.Response().Redirect(http.StatusFound, "/")
+	return ctx.Response().Redirect(http.StatusFound, "/account")
 }
 
 func (a *AuthController) Logout(ctx http.Context) http.Response {
 	if ctx.Request().HasSession() {
-		ctx.Request().Session().Forget("user_id")
+		if err := ctx.Request().Session().Invalidate(); err != nil {
+			return ctx.Response().String(http.StatusInternalServerError, "Could not end the session. Please try again.")
+		}
+		frameworksession.WriteCookie(ctx, ctx.Request().Session())
+		ctx.Request().Session().Forget("user", "user_id")
 		ctx.Request().Session().Forget("user_email")
 		ctx.Request().Session().Forget("user_name")
 		ctx.Request().Session().Forget("user_role")

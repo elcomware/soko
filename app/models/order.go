@@ -6,11 +6,13 @@ type OrderStatus string
 
 const (
 	OrderStatusPending   OrderStatus = "pending"
+	OrderStatusCancelled OrderStatus = "cancelled"
 	OrderStatusCompleted OrderStatus = "completed"
 	OrderStatusShipped   OrderStatus = "shipped"
 )
 
 type OrderItem struct {
+	StockReserved      bool        `gorm:"type:boolean;default:false" json:"-"`
 	ID                 string      `gorm:"primaryKey;type:varchar(64)" json:"id"`
 	OrderID            string      `gorm:"type:varchar(64);index" json:"order_id"`
 	ProductID          string      `gorm:"type:varchar(64);index" json:"product_id"`

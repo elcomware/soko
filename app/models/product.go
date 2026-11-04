@@ -32,9 +32,9 @@ const (
 )
 
 type PriceTier struct {
-	MinQty int     `json:"min_qty"`
-	MaxQty int     `json:"max_qty"`
-	Price  float64 `json:"price"`
+	MinQty int     `form:"min_qty" json:"min_qty"`
+	MaxQty int     `form:"max_qty" json:"max_qty"`
+	Price  float64 `form:"price" json:"price"`
 }
 
 type Product struct {
@@ -79,9 +79,9 @@ type Product struct {
 	UpdatedAt            time.Time     `json:"updated_at"`
 
 	// In-memory / JSON presentation fields
-	PriceTiers           []PriceTier   `gorm:"-" json:"price_tiers,omitempty"`
-	GalleryUrls          []string      `gorm:"-" json:"gallery_urls,omitempty"`
-	Tags                 []string      `gorm:"-" json:"tags,omitempty"`
+	PriceTiers  []PriceTier `gorm:"-" json:"price_tiers,omitempty"`
+	GalleryUrls []string    `gorm:"-" json:"gallery_urls,omitempty"`
+	Tags        []string    `gorm:"-" json:"tags,omitempty"`
 }
 
 func (Product) TableName() string {
@@ -104,15 +104,15 @@ func (p *Product) Hydrate() *Product {
 
 // PrepareSave packs slices into JSON text columns for DB storage
 func (p *Product) PrepareSave() *Product {
-	if len(p.PriceTiers) > 0 {
+	if p.PriceTiers != nil {
 		b, _ := json.Marshal(p.PriceTiers)
 		p.PriceTiersJSON = string(b)
 	}
-	if len(p.GalleryUrls) > 0 {
+	if p.GalleryUrls != nil {
 		b, _ := json.Marshal(p.GalleryUrls)
 		p.GalleryUrlsJSON = string(b)
 	}
-	if len(p.Tags) > 0 {
+	if p.Tags != nil {
 		b, _ := json.Marshal(p.Tags)
 		p.TagsJSON = string(b)
 	}

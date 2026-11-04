@@ -1,137 +1,88 @@
 package actions
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/goravel/framework/contracts/database/orm"
-
 	"elcomware/app/facades"
 	"elcomware/app/http/requests"
 	"elcomware/app/models"
+	"errors"
+	"fmt"
+	"github.com/google/uuid"
+	"github.com/goravel/framework/contracts/database/orm"
+	"math"
+	"sort"
+	"time"
 )
 
-type ExecuteCheckoutAction struct {
-	licenseAction *IssueDigitalLicenseAction
-}
+type ExecuteCheckoutAction struct{}
 
-func NewExecuteCheckoutAction() *ExecuteCheckoutAction {
-	return &ExecuteCheckoutAction{
-		licenseAction: NewIssueDigitalLicenseAction(),
-	}
-}
-
+func NewExecuteCheckoutAction() *ExecuteCheckoutAction { return &ExecuteCheckoutAction{} }
 func (a *ExecuteCheckoutAction) ExecuteFromRequest(req *requests.CheckoutRequest, user *models.User) (*models.Order, error) {
-	var product models.Product
-	if err := facades.Orm().Query().Where("id = ?", req.ProductID).First(&product); err != nil {
-		return nil, fmt.Errorf("invalid product selected for checkout: %w", err)
+	return a.ExecuteCart(map[string]int{req.ProductID: req.Quantity}, user)
+}
+func (a *ExecuteCheckoutAction) ExecuteCart(cart map[string]int, user *models.User) (*models.Order, error) {
+	if user == nil || user.ID == "" {
+		return nil, errors.New("sign in before placing an order")
 	}
-	product.Hydrate()
-
-	quantity := req.Quantity
-	if quantity < product.MOQ {
-		quantity = product.MOQ
+	if len(cart) == 0 || len(cart) > 100 {
+		return nil, errors.New("cart must contain between 1 and 100 listings")
 	}
-
-	unitPrice := product.Price
-	if len(product.PriceTiers) > 0 {
-		for _, tier := range product.PriceTiers {
-			if quantity >= tier.MinQty && (tier.MaxQty == 0 || quantity <= tier.MaxQty) {
-				unitPrice = tier.Price
-				break
-			}
-		}
-	} else if quantity >= 10 && product.WholesalePrice > 0 {
-		unitPrice = product.WholesalePrice
+	now := time.Now()
+	id := uuid.NewString()
+	order := &models.Order{ID: "ord_" + id, OrderNumber: "SOKO-" + id, UserID: user.ID, CustomerName: user.Name, CustomerEmail: user.Email, Currency: "USD", Status: models.OrderStatusPending, PaymentMethod: "Payment not collected", CreatedAt: now, UpdatedAt: now, Items: []models.OrderItem{}}
+	ids := make([]string, 0, len(cart))
+	for id := range cart {
+		ids = append(ids, id)
 	}
-
-	totalAmount := float64(quantity) * unitPrice
-
-	userID := "guest"
-	customerName := req.CustomerName
-	customerEmail := req.CustomerEmail
-
-	if user != nil {
-		userID = user.ID
-		if customerName == "" {
-			customerName = user.Name
-		}
-		if customerEmail == "" {
-			customerEmail = user.Email
-		}
-	}
-
-	if customerName == "" {
-		customerName = "Enterprise Procurement Partner"
-	}
-	if customerEmail == "" {
-		customerEmail = "procurement@globalbuyer.com"
-	}
-
-	currency := req.Currency
-	if currency == "" {
-		currency = "USD"
-	}
-	paymentRail := req.PaymentMethod
-	if paymentRail == "" {
-		paymentRail = "Trade Assurance Escrow"
-	}
-
-	orderID := fmt.Sprintf("ord_%d", time.Now().UnixNano())
-	orderNumber := fmt.Sprintf("SOKO-ORD-%d", time.Now().Unix()%1000000)
-
-	isDigital := product.Type == models.TypeDigitalSoftware ||
-		product.Type == models.TypeDigitalAsset ||
-		product.Type == models.TypeDigitalLicense ||
-		product.Format == models.FormatDigital
-
-	var licenseKey, downloadUrl string
-	if isDigital {
-		licenseKey, downloadUrl = a.licenseAction.Execute(&product)
-	}
-
-	item := models.OrderItem{
-		ID:                 fmt.Sprintf("item_%d", time.Now().UnixNano()),
-		OrderID:            orderID,
-		ProductID:          product.ID,
-		ProductTitle:       product.Title,
-		ProductType:        product.Type,
-		Quantity:           quantity,
-		UnitPrice:          unitPrice,
-		TotalPrice:         totalAmount,
-		DigitalLicenseKey:  licenseKey,
-		DigitalDownloadUrl: downloadUrl,
-		CreatedAt:          time.Now(),
-		UpdatedAt:          time.Now(),
-	}
-
-	order := &models.Order{
-		ID:            orderID,
-		OrderNumber:   orderNumber,
-		UserID:        userID,
-		CustomerName:  customerName,
-		CustomerEmail: customerEmail,
-		TotalAmount:   totalAmount,
-		Currency:      currency,
-		Status:        models.OrderStatusCompleted,
-		PaymentMethod: paymentRail,
-		HasDigital:    isDigital,
-		HasPhysical:   !isDigital,
-		Items:         []models.OrderItem{item},
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-	}
-
+	sort.Strings(ids)
 	err := facades.Orm().Transaction(func(tx orm.Query) error {
+		for _, id := range ids {
+			var p models.Product
+			if err := tx.Where("id = ?", id).First(&p); err != nil {
+				return err
+			}
+			if p.ID == "" {
+				return errors.New("a cart listing is no longer available")
+			}
+			qty := cart[id]
+			price, err := p.PriceFor(qty)
+			if err != nil {
+				return fmt.Errorf("%s: %w", p.Title, err)
+			}
+			if p.Stock >= 0 {
+				result, err := tx.Exec("UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ? AND stock >= ?", qty, now, id, qty)
+				if err != nil {
+					return err
+				}
+				if result.RowsAffected != 1 {
+					return errors.New("stock changed; review your cart and try again")
+				}
+			}
+			total := math.Round(price*float64(qty)*100) / 100
+			if math.IsNaN(total) || math.IsInf(total, 0) || total > 1e12 || order.TotalAmount+total > 1e12 {
+				return errors.New("order amount exceeds the supported limit")
+			}
+			item := models.OrderItem{StockReserved: p.Stock >= 0, ID: "item_" + uuid.NewString(), OrderID: order.ID, ProductID: id, ProductTitle: p.Title, ProductType: p.Type, Quantity: qty, UnitPrice: price, TotalPrice: total, CreatedAt: now, UpdatedAt: now}
+			if p.IsDigital() && item.ProductType == models.TypePhysical {
+				item.ProductType = models.TypeDigitalLicense
+			}
+			order.Items = append(order.Items, item)
+			order.TotalAmount += total
+			order.HasDigital = order.HasDigital || p.IsDigital()
+			order.HasPhysical = order.HasPhysical || !p.IsDigital()
+		}
+		order.TotalAmount = math.Round(order.TotalAmount*100) / 100
 		if err := tx.Create(order); err != nil {
 			return err
 		}
-		return tx.Create(&item)
+		for i := range order.Items {
+			if err := tx.Create(&order.Items[i]); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
-
 	return order, nil
 }

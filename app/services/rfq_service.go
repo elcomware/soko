@@ -2,6 +2,7 @@ package services
 
 import (
 	"elcomware/app/actions"
+	"elcomware/app/facades"
 	"elcomware/app/http/requests"
 	"elcomware/app/models"
 	"elcomware/app/queries"
@@ -22,7 +23,17 @@ func NewRfqService() *RfqService {
 }
 
 func (s *RfqService) GetOpenRfqs() ([]models.Rfq, error) {
-	return s.rfqQueries.FindAll()
+	var rfqs []models.Rfq
+	if err := facades.Orm().Query().Where("status = ?", models.RfqStatusOpen).OrderByDesc("created_at").Get(&rfqs); err != nil {
+		return nil, err
+	}
+	for i := range rfqs {
+		rfqs[i].BuyerID = ""
+		rfqs[i].BuyerName = ""
+		rfqs[i].BuyerCompany = ""
+		rfqs[i].Quotes = []models.RfqQuote{}
+	}
+	return rfqs, nil
 }
 
 func (s *RfqService) GetRfqByID(id string) (*models.Rfq, error) {

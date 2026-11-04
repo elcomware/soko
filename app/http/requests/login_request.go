@@ -17,7 +17,7 @@ func (r *LoginRequest) Authorize(ctx http.Context) error {
 func (r *LoginRequest) Rules(ctx http.Context) map[string]any {
 	return map[string]any{
 		"email":    "required|email",
-		"password": "required|min_len:6",
+		"password": "required",
 	}
 }
 
@@ -29,4 +29,3 @@ func (r *LoginRequest) Messages(ctx http.Context) map[string]string {
 		"password.min_len":  "Password must be at least 6 characters.",
 	}
 }
-

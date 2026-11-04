@@ -3,6 +3,7 @@ package actions
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"elcomware/app/facades"
@@ -16,15 +17,21 @@ func NewRegisterUserAction() *RegisterUserAction {
 }
 
 func (a *RegisterUserAction) Execute(user *models.User) (*models.User, error) {
-	count, _ := facades.Orm().Query().Model(&models.User{}).Where("email = ?", user.Email).Count()
+	user.Email = strings.ToLower(strings.TrimSpace(user.Email))
+	user.Name = strings.TrimSpace(user.Name)
+	count, err := facades.Orm().Query().Model(&models.User{}).Where("LOWER(email) = ?", user.Email).Count()
+	if err != nil {
+		return nil, err
+	}
 	if count > 0 {
 		return nil, errors.New("email address is already registered")
 	}
 
 	hashedPassword, err := facades.Hash().Make(user.Password)
-	if err == nil {
-		user.Password = hashedPassword
+	if err != nil {
+		return nil, errors.New("could not secure the account password")
 	}
+	user.Password = hashedPassword
 
 	if user.ID == "" {
 		user.ID = fmt.Sprintf("usr_%d", time.Now().UnixNano())
@@ -40,4 +47,3 @@ func (a *RegisterUserAction) Execute(user *models.User) (*models.User, error) {
 
 	return user, nil
 }
-

@@ -2,6 +2,7 @@ package actions
 
 import (
 	"errors"
+	"strings"
 
 	"elcomware/app/facades"
 	"elcomware/app/models"
@@ -15,16 +16,13 @@ func NewAuthenticateUserAction() *AuthenticateUserAction {
 
 func (a *AuthenticateUserAction) Execute(email, password string) (*models.User, error) {
 	var user models.User
-	if err := facades.Orm().Query().Where("email = ?", email).First(&user); err != nil {
+	if err := facades.Orm().Query().Where("LOWER(email) = ?", strings.ToLower(strings.TrimSpace(email))).First(&user); err != nil {
 		return nil, errors.New("invalid email or password")
 	}
 
-	if !facades.Hash().Check(password, user.Password) {
-		if user.Password != "plain:"+password && user.Password != password {
-			return nil, errors.New("invalid email or password")
-		}
+	if user.ID == "" || !facades.Hash().Check(password, user.Password) {
+		return nil, errors.New("invalid email or password")
 	}
 
 	return &user, nil
 }
-
