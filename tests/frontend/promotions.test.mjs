@@ -3,8 +3,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
-import { reactive, computed, ref } from 'vue'
-function campaignHarness(canManageAll, products = [], campaigns = []) {
+import { reactive, computed, ref, watch, nextTick } from 'vue'
+function campaignHarness(
+    canManageAll,
+    products = [],
+    campaigns = [],
+    extra = {}
+) {
     const source = readFileSync(
         new URL(
             '../../resources/js/Pages/Dashboard/Promotions.vue',
@@ -14,17 +19,29 @@ function campaignHarness(canManageAll, products = [], campaigns = []) {
     )
     let script = source
         .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-        .replace(/^import .*$/gm, '')
+        .replace(/^import[\s\S]*?(?:from\s*)?['"][^'"]+['"]\s*$/gm, '')
     script +=
-        '\n globalThis.harness = { form, edit, reset, resetDraft, busy, error, eligibleProducts, merchants, selectableProducts, targetSearch, targetPanels, targetKey, targetOptions, filteredTargetOptions, selectedTargets, removeTarget, activeTargetKind, editorOpen, dirty, createCampaign, closeEditor, save, currentTime, status, visibleCampaigns, campaignSearch, statusFilter };'
-    let mount, unmount
-    const clockTimers = []
+        '\n globalThis.harness = { form, edit, reset, resetDraft, busy, error, eligibleProducts, merchants, selectableProducts, targetSearch, targetPanels, targetKey, targetOptions, filteredTargetOptions, selectedTargets, removeTarget, activeTargetKind, editorOpen, dirty, createCampaign, closeEditor, save, currentTime, status, visibleCampaigns, campaignSearch, statusFilter, listLoading, listError, filtersPending, campaignListUrl, applyCampaignFilters, refreshCampaigns, changeCampaignPage, changeCampaignSize, statusSnapshotExpired, campaignCounts, sourceSchedule, scheduleTimestamp, editCampaignData, draftRecovered, pendingCampaignRecovery, retryCampaignRecovery, discardPendingRecovery };'
+    const mounts = [],
+        unmounts = [],
+        requests = [],
+        posts = [],
+        timers = []
+    const props = reactive({
+        canManageAll,
+        actorId: 'merchant-own',
+        products,
+        campaigns,
+        ...extra,
+    })
+    const clockTimers = [],
+        recoveries = []
     const context = {
         onMounted: (fn) => {
-            mount = fn
+            mounts.push(fn)
         },
         onBeforeUnmount: (fn) => {
-            unmount = fn
+            unmounts.push(fn)
         },
         setInterval: (callback, delay) => {
             clockTimers.push({ callback, delay, cleared: false })
@@ -33,20 +50,30 @@ function campaignHarness(canManageAll, products = [], campaigns = []) {
         clearInterval: (id) => {
             clockTimers[id - 1].cleared = true
         },
+        useAdminDraftRecovery: (options) => recoveries.push(options),
+        watch,
+        nextTick,
+        URLSearchParams,
+        setTimeout: (callback, delay) => {
+            timers.push({ callback, delay, cleared: false })
+            return timers.length
+        },
+        clearTimeout: (id) => {
+            if (timers[id - 1]) timers[id - 1].cleared = true
+        },
+        router: {
+            remember: () => {},
+            get: (url, data, options) => requests.push({ url, data, options }),
+        },
         reactive,
         computed,
         ref,
-        defineProps: () => ({
-            canManageAll,
-            actorId: 'merchant-own',
-            products,
-            campaigns,
-        }),
+        defineProps: () => props,
         document: { getElementById: () => null },
         useMarketplaceForm: () => ({
             busy: ref(false),
             error: ref('old error'),
-            post: () => {},
+            post: (url, data, success) => posts.push({ url, data, success }),
             validate: () => true,
         }),
     }
@@ -61,9 +88,14 @@ function campaignHarness(canManageAll, products = [], campaigns = []) {
     )
     return {
         ...context.harness,
-        mount: () => mount(),
-        unmount: () => unmount(),
+        mount: () => mounts.forEach((fn) => fn()),
+        unmount: () => unmounts.forEach((fn) => fn()),
+        props,
+        requests,
+        posts,
+        timers,
         clockTimers,
+        recoveries,
     }
 }
 for (const canManageAll of [true, false])
@@ -350,4 +382,268 @@ test('category choice counts use singular and plural product labels', () => {
         options.find((option) => option.value === 'Clothes').context,
         '2 products'
     )
+})
+
+const campaignPage = (overrides = {}) => ({
+    page: 2,
+    per_page: 25,
+    total: 80,
+    filtered_total: 40,
+    last_page: 2,
+    from: 26,
+    to: 40,
+    filters: { q: '', status: '', sort: 'newest' },
+    ...overrides,
+})
+test('server campaign results and counts stay authoritative with bounded paging', () => {
+    const h = campaignHarness(
+        true,
+        [],
+        [
+            {
+                id: 'server-match',
+                name: 'Server matched merchant',
+                enabled: false,
+            },
+        ],
+        {
+            campaignPage: campaignPage(),
+            campaignCounts: {
+                total: 80,
+                active: 30,
+                scheduled: 10,
+                ended: 20,
+                disabled: 20,
+            },
+        }
+    )
+    h.campaignSearch.value = 'pending query'
+    assert.equal(
+        h.visibleCampaigns.value.length,
+        1,
+        'do not locally refilter a server page'
+    )
+    assert.equal(h.campaignCounts.value.total, 80)
+    h.changeCampaignPage(1)
+    assert.equal(h.requests.length, 0, 'no paging with unapplied filters')
+    h.applyCampaignFilters()
+    assert.match(h.requests[0].url, /page=1/)
+    assert.match(h.requests[0].url, /q=pending\+query/)
+    h.createCampaign()
+    assert.equal(
+        h.editorOpen.value,
+        false,
+        'list request cannot race draft opening'
+    )
+    h.requests[0].options.onFinish()
+    h.unmount()
+})
+test('debounced campaign search queues latest query and preserves typing across stale responses', async () => {
+    const h = campaignHarness(true, [], [], { campaignPage: campaignPage() })
+    h.campaignSearch.value = 'coat'
+    assert.equal(h.timers.at(-1).delay, 350)
+    h.timers.at(-1).callback()
+    assert.equal(h.requests.length, 1)
+    h.campaignSearch.value = 'coats'
+    h.props.campaignPage = campaignPage({
+        page: 1,
+        filters: { q: 'coat', status: '', sort: 'newest' },
+    })
+    assert.equal(h.campaignSearch.value, 'coats')
+    h.requests[0].options.onFinish()
+    await nextTick()
+    assert.equal(h.requests.length, 2)
+    assert.match(h.requests[1].url, /q=coats/)
+    h.requests[1].options.onFinish()
+    h.campaignSearch.value = ''
+    assert.equal(
+        h.timers.at(-1).delay,
+        0,
+        'clearing search refreshes immediately'
+    )
+    h.unmount()
+})
+test('schedule boundary waits for draft closure and failed refresh remains visible without retry loop', async () => {
+    const boundary = Date.now() + 10000
+    const h = campaignHarness(true, [], [], {
+        campaignPage: campaignPage(),
+        nextStatusChange: new Date(boundary).toISOString(),
+    })
+    h.createCampaign()
+    h.form.name = 'Unsaved campaign'
+    h.currentTime.value = boundary
+    await nextTick()
+    assert.equal(h.requests.length, 0)
+    assert.equal(h.form.name, 'Unsaved campaign')
+    h.closeEditor()
+    await nextTick()
+    assert.equal(h.requests.length, 1)
+    h.requests[0].options.onNetworkError()
+    h.requests[0].options.onFinish()
+    h.currentTime.value += 1000
+    await nextTick()
+    assert.equal(h.requests.length, 1)
+    assert.match(h.listError.value, /Connection lost/)
+    h.unmount()
+})
+test('editing refreshes selected campaign and unavailable records never open stale drafts', () => {
+    const h = campaignHarness(true, [], [], { campaignPage: campaignPage() })
+    h.edit({ id: 'old-row' })
+    assert.match(h.requests[0].url, /selected_campaign=old-row/)
+    h.requests[0].options.onSuccess({
+        props: { selectedCampaignStatus: 'unavailable' },
+    })
+    assert.equal(h.editorOpen.value, false)
+    assert.match(h.listError.value, /no longer available/)
+    h.requests[0].options.onFinish()
+    h.createCampaign()
+    h.form.starts_at = '2026-12-01T00:00'
+    h.form.ends_at = '2026-12-02T00:00'
+    h.save({})
+    assert.equal(h.posts[0].data.return_page, 2)
+    assert.equal(h.posts[0].data.return_sort, 'newest')
+    h.unmount()
+})
+
+function savedCampaign() {
+    return {
+        id: 'campaign-1',
+        name: 'Scheduled',
+        kind: 'percentage',
+        amount: 10,
+        enabled: true,
+        vendor_id: 'merchant-own',
+        updated_at: 'original-version',
+        starts_at: '2026-12-01T12:30:47.123456789Z',
+        ends_at: '2026-12-02T15:16:59.987654321Z',
+        scope: {
+            all: true,
+            product_ids: [],
+            categories: [],
+            sub_categories: [],
+            exclude_product_ids: ['removed-product'],
+            exclude_categories: [],
+            exclude_sub_categories: [],
+        },
+    }
+}
+test('editing unrelated campaign fields preserves original schedule precision byte-for-byte', () => {
+    const h = campaignHarness(false)
+    const campaign = savedCampaign()
+    h.edit(campaign)
+    h.form.name = 'Renamed'
+    h.save({})
+    assert.equal(h.posts[0].data.starts_at, campaign.starts_at)
+    assert.equal(h.posts[0].data.ends_at, campaign.ends_at)
+    h.form.starts_at = '2026-12-01T12:31:48.456'
+    assert.equal(new Date(h.scheduleTimestamp('starts_at')).getSeconds(), 48)
+    assert.equal(
+        new Date(h.scheduleTimestamp('starts_at')).getMilliseconds(),
+        456
+    )
+})
+test('empty category and parentless subcategory cannot be selected but uncategorized products can', () => {
+    const h = campaignHarness(false, [
+        {
+            id: 'uncategorized',
+            title: 'Uncategorized item',
+            category: '',
+            sub_category: 'Invalid parent',
+            vendor_id: 'merchant-own',
+        },
+    ])
+    assert.equal(h.targetOptions('categories').length, 0)
+    assert.equal(h.targetOptions('sub_categories').length, 0)
+    assert.equal(h.targetOptions('product_ids').length, 1)
+    h.form.categories = ['']
+    assert.equal(
+        h.selectedTargets('include').length,
+        1,
+        'existing scope is not silently changed'
+    )
+})
+test('campaign history recovery verifies current ownership without refreshing the saved concurrency version', () => {
+    const source = campaignHarness(false)
+    source.edit(savedCampaign())
+    source.form.name = 'Unsaved name'
+    const snapshot = JSON.parse(JSON.stringify(source.recoveries[0].read()))
+    const h = campaignHarness(false, [], [], { campaignPage: campaignPage() })
+    assert.equal(h.recoveries[0].key, 'soko:campaign-draft:merchant-own')
+    h.recoveries[0].apply(snapshot)
+    assert.equal(h.editorOpen.value, false)
+    h.requests[0].options.onSuccess({
+        props: {
+            selectedCampaignStatus: 'available',
+            selectedCampaign: {
+                ...savedCampaign(),
+                updated_at: 'new-server-version',
+            },
+        },
+    })
+    assert.equal(h.form.name, 'Unsaved name')
+    assert.equal(h.form.version, 'original-version')
+    assert.equal(h.dirty.value, true)
+    assert.equal(h.form.exclude_product_ids[0], 'removed-product')
+    assert.equal(h.scheduleTimestamp('starts_at'), savedCampaign().starts_at)
+    assert.equal(h.draftRecovered.value, true)
+    const revoked = campaignHarness(false, [], [], {
+        campaignPage: campaignPage(),
+    })
+    snapshot.form.vendor_id = 'another-merchant'
+    revoked.recoveries[0].apply(snapshot)
+    assert.equal(revoked.requests.length, 0)
+    assert.equal(revoked.editorOpen.value, false)
+})
+
+test('failed history restore keeps pending draft and blocks competing actions until retry or explicit discard', () => {
+    const source = campaignHarness(false)
+    source.edit(savedCampaign())
+    source.form.name = 'Important unsaved change'
+    const snapshot = JSON.parse(JSON.stringify(source.recoveries[0].read()))
+    const h = campaignHarness(false, [], [], { campaignPage: campaignPage() })
+    h.recoveries[0].apply(snapshot)
+    h.requests[0].options.onNetworkError()
+    h.requests[0].options.onFinish()
+    assert.equal(
+        h.pendingCampaignRecovery.value.form.name,
+        'Important unsaved change'
+    )
+    assert.equal(h.recoveries[0].dirty(), true)
+    h.createCampaign()
+    h.applyCampaignFilters()
+    h.edit({ id: 'another' })
+    assert.equal(h.requests.length, 1)
+    assert.equal(h.editorOpen.value, false)
+    h.retryCampaignRecovery()
+    assert.equal(h.requests.length, 2)
+    h.requests[1].options.onNetworkError()
+    h.requests[1].options.onFinish()
+    h.discardPendingRecovery()
+    assert.equal(h.pendingCampaignRecovery.value, null)
+    h.createCampaign()
+    assert.equal(h.editorOpen.value, true)
+})
+test('selected record identity is checked and schedule expiry during a request refreshes after completion', async () => {
+    const h = campaignHarness(true, [], [], {
+        campaignPage: campaignPage(),
+        nextStatusChange: new Date(Date.now() + 10000).toISOString(),
+    })
+    h.edit({ id: 'wanted' })
+    h.requests[0].options.onSuccess({
+        props: {
+            selectedCampaignStatus: 'available',
+            selectedCampaign: savedCampaign(),
+        },
+    })
+    assert.equal(h.editorOpen.value, false)
+    assert.match(h.listError.value, /no longer available/)
+    h.requests[0].options.onFinish()
+    h.refreshCampaigns()
+    h.currentTime.value = Date.parse(h.props.nextStatusChange)
+    await nextTick()
+    assert.equal(h.requests.length, 2)
+    h.requests[1].options.onFinish()
+    await nextTick()
+    assert.equal(h.requests.length, 3)
+    h.unmount()
 })

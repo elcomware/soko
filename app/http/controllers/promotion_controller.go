@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -18,23 +19,22 @@ type PromotionController struct{}
 func NewPromotionController() *PromotionController { return &PromotionController{} }
 func (c *PromotionController) Index(ctx http.Context) http.Response {
 	actor := appmiddleware.CurrentUser(ctx)
-	campaigns, err := services.ListPromotions(actor)
-	if err != nil {
+	if actor == nil || !actor.HasPermission("promotions.manage") {
 		return ctx.Response().String(http.StatusForbidden, "Campaign access denied.")
 	}
-	q := facades.Orm().Query()
-	if !actor.Can("promotions.manage", "") {
-		q = q.Where("vendor_id = ?", actor.ID)
+	input := map[string]string{}
+	for _, key := range []string{"q", "status", "sort", "page", "per_page", "selected_campaign"} {
+		input[key] = ctx.Request().Query(key, "")
 	}
-	products := []models.Product{}
-	if err = q.Get(&products); err != nil {
-		return ctx.Response().String(http.StatusInternalServerError, "Campaign products could not be loaded.")
+	filters, err := services.ParseWorkspacePromotionFilters(input)
+	if err != nil {
+		return ctx.Response().String(http.StatusBadRequest, "Invalid campaign filters: "+err.Error())
 	}
-	targets := []map[string]string{}
-	for _, p := range products {
-		targets = append(targets, map[string]string{"id": p.ID, "title": p.Title, "category": p.Category, "sub_category": p.SubCategory, "vendor_id": p.VendorID, "vendor_name": p.VendorName})
+	result, err := services.LoadWorkspacePromotions(actor, filters, time.Now().UTC())
+	if err != nil {
+		return ctx.Response().String(http.StatusInternalServerError, "Campaign workspace could not be loaded. Please try again.")
 	}
-	return inertiafacades.Inertia().Render(ctx, "Dashboard/Promotions", map[string]any{"campaigns": campaigns, "products": targets, "canManageAll": actor.Can("promotions.manage", ""), "actorId": actor.ID, "serverTime": time.Now().UTC().Format(time.RFC3339)})
+	return inertiafacades.Inertia().Render(ctx, "Dashboard/Promotions", map[string]any{"campaigns": result.Campaigns, "campaignPage": result.CampaignPage, "campaignCounts": result.CampaignCounts, "selectedCampaign": result.SelectedCampaign, "selectedCampaignStatus": result.SelectedCampaignStatus, "nextStatusChange": result.NextStatusChange, "products": result.Products, "canManageAll": actor.Can("promotions.manage", ""), "actorId": actor.ID, "serverTime": result.ServerTime})
 }
 func (c *PromotionController) Save(ctx http.Context) http.Response {
 	actor := appmiddleware.CurrentUser(ctx)
@@ -76,5 +76,18 @@ func (c *PromotionController) Save(ctx http.Context) http.Response {
 	} else {
 		ctx.Request().Session().Flash("success", "Campaign saved. It applies only during its scheduled period.")
 	}
-	return ctx.Response().Redirect(http.StatusSeeOther, "/dashboard/promotions")
+	destination := "/dashboard/promotions"
+	returnInput := map[string]string{}
+	hasReturn := false
+	for _, key := range []string{"q", "status", "sort", "page", "per_page"} {
+		returnInput[key] = ctx.Request().Input("return_" + key)
+		hasReturn = hasReturn || returnInput[key] != ""
+	}
+	if hasReturn {
+		if filters, err := services.ParseWorkspacePromotionFilters(returnInput); err == nil {
+			values := url.Values{"q": {filters.Query}, "status": {filters.Status}, "sort": {filters.Sort}, "page": {strconv.Itoa(filters.Page)}, "per_page": {strconv.Itoa(filters.PerPage)}}
+			destination += "?" + values.Encode()
+		}
+	}
+	return ctx.Response().Redirect(http.StatusSeeOther, destination)
 }

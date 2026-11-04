@@ -1,6 +1,16 @@
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted, onBeforeUnmount } from 'vue'
-import { Head } from '@inertiajs/vue3'
+import {
+    computed,
+    reactive,
+    ref,
+    onMounted,
+    onBeforeUnmount,
+    watch,
+    nextTick,
+} from 'vue'
+import { Head, router } from '@inertiajs/vue3'
+import AdminPagination from '@/components/AdminPagination.vue'
+import { useAdminDraftRecovery } from '@/design/adminDraftRecovery'
 import AdminDrawer from '@/components/AdminDrawer.vue'
 import AdminTable from '@/components/AdminTable.vue'
 import AdminActionMenu from '@/components/AdminActionMenu.vue'
@@ -19,6 +29,25 @@ const props = defineProps<{
     products: Target[]
     canManageAll: boolean
     actorId: string
+    campaignPage?: {
+        page: number
+        per_page: number
+        total: number
+        filtered_total: number
+        last_page: number
+        from: number
+        to: number
+        filters: { q: string; status: string; sort: string }
+    }
+    campaignCounts?: {
+        total: number
+        active: number
+        scheduled: number
+        ended: number
+        disabled: number
+    }
+    serverTime?: string
+    nextStatusChange?: string
 }>()
 const { busy, error, post, validate } = useMarketplaceForm()
 const freshCampaign = () => ({
@@ -40,42 +69,65 @@ const freshCampaign = () => ({
     exclude_sub_categories: [] as string[],
 })
 const form = reactive(freshCampaign())
+const sourceSchedule = reactive({
+    starts_at: '',
+    ends_at: '',
+    local_start: '',
+    local_end: '',
+})
+const draftRecovered = ref(false)
+const pendingCampaignRecovery = ref<Record<string, any> | null>(null)
 const targetSearch = ref('')
 const editorOpen = ref(false)
 const savedDraft = ref(JSON.stringify(form))
 const dirty = computed(() => JSON.stringify(form) !== savedDraft.value)
-const currentTime = ref(Date.now())
+let serverOffset = props.serverTime
+    ? Date.parse(props.serverTime) - Date.now()
+    : 0
+const currentTime = ref(Date.now() + serverOffset)
 let statusClock: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
     statusClock = setInterval(() => {
-        currentTime.value = Date.now()
+        currentTime.value = Date.now() + serverOffset
     }, 1000)
 })
 onBeforeUnmount(() => {
     if (statusClock) clearInterval(statusClock)
 })
-const campaignSearch = ref('')
-const statusFilter = ref('all')
+const campaignSearch = ref(props.campaignPage?.filters.q || '')
+const statusFilter = ref(props.campaignPage?.filters.status || 'all')
+const campaignSort = ref(props.campaignPage?.filters.sort || 'newest')
 const visibleCampaigns = computed(() =>
-    props.campaigns.filter((c) => {
-        const query = campaignSearch.value.trim().toLowerCase()
-        return (
-            (statusFilter.value === 'all' ||
-                status(c) === statusFilter.value) &&
-            (!query ||
-                [c.name, merchantName(c.vendor_id), c.kind]
-                    .join(' ')
-                    .toLowerCase()
-                    .includes(query))
-        )
-    })
+    props.campaignPage
+        ? props.campaigns
+        : props.campaigns.filter((c) => {
+              const query = campaignSearch.value.trim().toLowerCase()
+              return (
+                  (statusFilter.value === 'all' ||
+                      status(c).toLowerCase() ===
+                          statusFilter.value.toLowerCase()) &&
+                  (!query ||
+                      [c.name, merchantName(c.vendor_id), c.kind]
+                          .join(' ')
+                          .toLowerCase()
+                          .includes(query))
+              )
+          })
 )
 function clearCampaignFilters() {
     campaignSearch.value = ''
     statusFilter.value = 'all'
+    applyCampaignFilters()
 }
 function createCampaign() {
-    if (busy.value || editorOpen.value) return
+    if (
+        busy.value ||
+        editorOpen.value ||
+        listLoading.value ||
+        filtersPending.value ||
+        pendingCampaignRecovery.value
+    )
+        return
     resetDraft()
     editorOpen.value = true
 }
@@ -128,19 +180,30 @@ const eligibleProducts = computed(() =>
         )
     })
 )
-const campaignCounts = computed(() => ({
-    active: props.campaigns.filter((c) => status(c) === 'Active').length,
-    scheduled: props.campaigns.filter((c) => status(c) === 'Scheduled').length,
-    total: props.campaigns.length,
-}))
+const campaignCounts = computed(
+    () =>
+        props.campaignCounts || {
+            active: props.campaigns.filter((c) => status(c) === 'Active')
+                .length,
+            scheduled: props.campaigns.filter((c) => status(c) === 'Scheduled')
+                .length,
+            total: props.campaigns.length,
+        }
+)
 const categories = computed(() =>
-    [...new Set(scopedProducts.value.map((p) => p.category))].sort()
+    [
+        ...new Set(
+            scopedProducts.value
+                .map((p) => p.category)
+                .filter((value) => value.trim())
+        ),
+    ].sort()
 )
 const subcategories = computed(() =>
     [
         ...new Set(
             scopedProducts.value
-                .filter((p) => p.sub_category)
+                .filter((p) => p.category.trim() && p.sub_category.trim())
                 .map((p) =>
                     JSON.stringify({
                         category: p.category,
@@ -228,14 +291,251 @@ function removeTarget(key: TargetKey, value: string) {
     if (busy.value) return
     form[key] = form[key].filter((item) => item !== value)
 }
+const listLoading = ref(false)
+const listError = ref('')
+const pageSize = ref(props.campaignPage?.per_page || 25)
+const listHeight = ref(480)
+const campaignColumns = [
+    { key: 'name', label: 'Campaign', width: 220 },
+    { key: 'coverage', label: 'Coverage', width: 220 },
+    { key: 'amount', label: 'Discount', width: 150 },
+    { key: 'period', label: 'Period', width: 280 },
+    { key: 'status', label: 'Status', width: 130 },
+    { key: 'action', label: 'Action', width: 100 },
+]
+const filterSignature = () =>
+    JSON.stringify([
+        campaignSearch.value.trim(),
+        statusFilter.value === 'all' ? '' : statusFilter.value.toLowerCase(),
+        campaignSort.value,
+        pageSize.value,
+    ])
+const filtersPending = computed(() =>
+    Boolean(
+        props.campaignPage &&
+        filterSignature() !==
+            JSON.stringify([
+                props.campaignPage.filters.q,
+                props.campaignPage.filters.status,
+                props.campaignPage.filters.sort,
+                props.campaignPage.per_page,
+            ])
+    )
+)
+const statusSnapshotExpired = computed(() =>
+    Boolean(
+        props.nextStatusChange &&
+        currentTime.value >= Date.parse(props.nextStatusChange)
+    )
+)
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+let queuedSearch = false,
+    disposed = false,
+    submittedFilters = '',
+    syncingFilters = false
+function campaignListUrl(page = 1) {
+    const query = new URLSearchParams({
+        page: String(page),
+        per_page: String(pageSize.value),
+        sort: campaignSort.value,
+    })
+    if (campaignSearch.value.trim()) query.set('q', campaignSearch.value.trim())
+    if (statusFilter.value !== 'all')
+        query.set('status', statusFilter.value.toLowerCase())
+    return '/dashboard/promotions?' + query.toString()
+}
+function visitCampaignList(
+    url: string,
+    success?: (response: any) => void,
+    recovering = false
+) {
+    if (
+        !props.campaignPage ||
+        disposed ||
+        busy.value ||
+        editorOpen.value ||
+        (pendingCampaignRecovery.value && !recovering)
+    )
+        return
+    if (listLoading.value) {
+        queuedSearch = true
+        return
+    }
+    if (searchTimer) clearTimeout(searchTimer)
+    queuedSearch = false
+    submittedFilters = filterSignature()
+    listLoading.value = true
+    listError.value = ''
+    router.get(
+        url,
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: (response) => {
+                if (
+                    !disposed &&
+                    !queuedSearch &&
+                    filterSignature() === submittedFilters
+                )
+                    success?.(response)
+            },
+            onError: () => {
+                listError.value =
+                    'Campaigns could not be loaded. Previous results are still shown.'
+            },
+            onNetworkError: () => {
+                listError.value = 'Connection lost. Retry to refresh campaigns.'
+                return false
+            },
+            onHttpException: () => {
+                listError.value =
+                    'Campaigns could not be loaded. Previous results are still shown.'
+                return false
+            },
+            onFinish: () => {
+                listLoading.value = false
+                if (queuedSearch && !disposed) {
+                    queuedSearch = false
+                    void nextTick(applyCampaignFilters)
+                }
+            },
+        }
+    )
+}
+function applyCampaignFilters() {
+    visitCampaignList(campaignListUrl(1))
+}
+function refreshCampaigns() {
+    visitCampaignList(
+        campaignListUrl(
+            filtersPending.value ? 1 : props.campaignPage?.page || 1
+        )
+    )
+}
+function changeCampaignPage(page: number) {
+    if (
+        !props.campaignPage ||
+        filtersPending.value ||
+        page < 1 ||
+        page > props.campaignPage.last_page
+    )
+        return
+    visitCampaignList(campaignListUrl(page))
+}
+function changeCampaignSize(size: number) {
+    if (![25, 50, 100].includes(size) || busy.value || editorOpen.value) return
+    pageSize.value = size
+    applyCampaignFilters()
+}
+watch(
+    () => props.campaignPage,
+    (value) => {
+        if (
+            !value ||
+            (listLoading.value && filterSignature() !== submittedFilters)
+        )
+            return
+        syncingFilters = true
+        campaignSearch.value = value.filters.q
+        statusFilter.value = value.filters.status || 'all'
+        campaignSort.value = value.filters.sort
+        pageSize.value = value.per_page
+        syncingFilters = false
+    },
+    { deep: true, flush: 'sync' }
+)
+watch(
+    campaignSearch,
+    () => {
+        if (
+            syncingFilters ||
+            !props.campaignPage ||
+            pendingCampaignRecovery.value
+        )
+            return
+        if (searchTimer) clearTimeout(searchTimer)
+        if (listLoading.value && filterSignature() !== submittedFilters)
+            queuedSearch = true
+        searchTimer = setTimeout(
+            applyCampaignFilters,
+            campaignSearch.value ? 350 : 0
+        )
+    },
+    { flush: 'sync' }
+)
+watch(
+    () => props.serverTime,
+    (value) => {
+        if (value) {
+            serverOffset = Date.parse(value) - Date.now()
+            currentTime.value = Date.now() + serverOffset
+        }
+    }
+)
+watch(
+    [statusSnapshotExpired, editorOpen, busy, listLoading],
+    ([expired, open, saving]) => {
+        if (
+            expired &&
+            !open &&
+            !saving &&
+            !listLoading.value &&
+            !listError.value
+        )
+            refreshCampaigns()
+    }
+)
+onBeforeUnmount(() => {
+    disposed = true
+    if (searchTimer) clearTimeout(searchTimer)
+})
 const localTime = (value: string) => {
     const d = new Date(value)
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
         .toISOString()
-        .slice(0, 16)
+        .slice(0, 23)
 }
 function edit(c: any) {
-    if (busy.value) return
+    if (
+        busy.value ||
+        editorOpen.value ||
+        listLoading.value ||
+        filtersPending.value ||
+        pendingCampaignRecovery.value
+    )
+        return
+    if (props.campaignPage) {
+        visitCampaignList(
+            campaignListUrl(props.campaignPage.page) +
+                '&selected_campaign=' +
+                encodeURIComponent(c.id),
+            (response) => {
+                if (
+                    response.props.selectedCampaignStatus !== 'available' ||
+                    !response.props.selectedCampaign ||
+                    response.props.selectedCampaign.id !== c.id
+                ) {
+                    listError.value =
+                        'This campaign is no longer available. Refresh the list.'
+                    return
+                }
+                editCampaignData(response.props.selectedCampaign)
+            }
+        )
+        return
+    }
+    editCampaignData(c)
+}
+function editCampaignData(c: any) {
+    if (busy.value || editorOpen.value) return
+    draftRecovered.value = false
+    Object.assign(sourceSchedule, {
+        starts_at: c.starts_at,
+        ends_at: c.ends_at,
+        local_start: localTime(c.starts_at),
+        local_end: localTime(c.ends_at),
+    })
     error.value = ''
     Object.assign(form, {
         id: c.id,
@@ -273,6 +573,13 @@ function reset() {
     resetDraft()
 }
 function resetDraft() {
+    draftRecovered.value = false
+    Object.assign(sourceSchedule, {
+        starts_at: '',
+        ends_at: '',
+        local_start: '',
+        local_end: '',
+    })
     Object.assign(form, freshCampaign())
     activeTargetKind.include = 'categories'
     activeTargetKind.exclude = 'categories'
@@ -282,6 +589,15 @@ function resetDraft() {
     editorOpen.value = false
 }
 
+function scheduleTimestamp(key: 'starts_at' | 'ends_at') {
+    const originalLocal =
+        key === 'starts_at'
+            ? sourceSchedule.local_start
+            : sourceSchedule.local_end
+    return sourceSchedule[key] && form[key] === originalLocal
+        ? sourceSchedule[key]
+        : new Date(form[key]).toISOString()
+}
 function save(e: Event) {
     if (busy.value || !validate(e)) return
     if (
@@ -309,10 +625,15 @@ function save(e: Event) {
             kind: form.kind,
             amount: form.amount,
             enabled: String(form.enabled),
-            starts_at: new Date(form.starts_at).toISOString(),
-            ends_at: new Date(form.ends_at).toISOString(),
+            starts_at: scheduleTimestamp('starts_at'),
+            ends_at: scheduleTimestamp('ends_at'),
             vendor_id: form.vendor_id,
             version: form.version,
+            return_q: props.campaignPage?.filters.q || '',
+            return_status: props.campaignPage?.filters.status || '',
+            return_sort: props.campaignPage?.filters.sort || 'newest',
+            return_page: props.campaignPage?.page || 1,
+            return_per_page: props.campaignPage?.per_page || 25,
             scope: JSON.stringify(scope),
         },
         resetDraft
@@ -327,6 +648,91 @@ function status(c: any) {
           : now >= Date.parse(c.ends_at)
             ? 'Ended'
             : 'Active'
+}
+const recoveryKey = `soko:campaign-draft:${props.actorId}`
+useAdminDraftRecovery({
+    key: recoveryKey,
+    allowed: () => Boolean(props.actorId), // This route requires promotions.manage on the server.
+    read: () =>
+        pendingCampaignRecovery.value || {
+            form: Object.fromEntries(
+                Object.keys(freshCampaign()).map((key) => [
+                    key,
+                    (form as any)[key],
+                ])
+            ),
+            baseline: savedDraft.value,
+            schedule: { ...sourceSchedule },
+        },
+    dirty: () =>
+        Boolean(pendingCampaignRecovery.value) ||
+        (editorOpen.value && dirty.value),
+    apply: restoreCampaignDraft,
+})
+function discardPendingRecovery() {
+    if (listLoading.value) return
+    pendingCampaignRecovery.value = null
+    router.remember(null, recoveryKey)
+    listError.value = ''
+}
+function retryCampaignRecovery() {
+    if (pendingCampaignRecovery.value && !listLoading.value)
+        restoreCampaignDraft(pendingCampaignRecovery.value)
+}
+function restoreCampaignDraft(saved: Record<string, any>) {
+    const draft = saved.form as ReturnType<typeof freshCampaign> | undefined
+    if (
+        !draft ||
+        typeof draft !== 'object' ||
+        (!props.canManageAll && draft.vendor_id !== props.actorId)
+    )
+        return
+    pendingCampaignRecovery.value = saved
+    const restore = () => {
+        for (const key of Object.keys(freshCampaign())) {
+            if (Object.prototype.hasOwnProperty.call(draft, key))
+                (form as any)[key] = JSON.parse(
+                    JSON.stringify((draft as any)[key])
+                )
+        }
+        if (typeof saved.baseline === 'string')
+            savedDraft.value = saved.baseline
+        const schedule = saved.schedule as Record<string, unknown> | undefined
+        for (const key of Object.keys(sourceSchedule)) {
+            if (typeof schedule?.[key] === 'string')
+                (sourceSchedule as any)[key] = schedule[key]
+        }
+        draftRecovered.value = true
+        editorOpen.value = true
+        pendingCampaignRecovery.value = null
+    }
+    if (!draft.id) {
+        restore()
+        return
+    }
+    visitCampaignList(
+        campaignListUrl(props.campaignPage?.page || 1) +
+            '&selected_campaign=' +
+            encodeURIComponent(draft.id),
+        (response) => {
+            const current = response.props.selectedCampaign
+            if (
+                response.props.selectedCampaignStatus !== 'available' ||
+                !current ||
+                current.id !== draft.id ||
+                (!props.canManageAll && current.vendor_id !== props.actorId)
+            ) {
+                listError.value =
+                    'The saved campaign draft is no longer accessible.'
+                pendingCampaignRecovery.value = null
+                router.remember(null, recoveryKey)
+                return
+            }
+            // Preserve the recovered version. A concurrent change must conflict, not be overwritten.
+            restore()
+        },
+        true
+    )
 }
 </script>
 <template>
@@ -344,7 +750,12 @@ function status(c: any) {
             <button
                 type="button"
                 class="button button-navy"
-                :disabled="busy"
+                :disabled="
+                    busy ||
+                    listLoading ||
+                    filtersPending ||
+                    !!pendingCampaignRecovery
+                "
                 @click="createCampaign"
             >
                 Create campaign
@@ -377,18 +788,31 @@ function status(c: any) {
                     </p>
                 </div>
                 <span role="status"
-                    >{{ visibleCampaigns.length }} of
-                    {{ campaigns.length }}</span
+                    >{{
+                        props.campaignPage?.filtered_total ??
+                        visibleCampaigns.length
+                    }}
+                    matching campaigns</span
                 >
             </div>
-            <div class="campaign-list-filters">
+            <form
+                class="campaign-list-filters"
+                @submit.prevent="applyCampaignFilters"
+            >
                 <label
                     >Search campaigns<input
                         v-model="campaignSearch"
+                        :disabled="!!pendingCampaignRecovery || busy"
                         type="search"
                         placeholder="Campaign or merchant name" /></label
                 ><label
-                    >Status<select v-model="statusFilter">
+                    >Status<select
+                        v-model="statusFilter"
+                        :disabled="
+                            busy || listLoading || !!pendingCampaignRecovery
+                        "
+                        @change="applyCampaignFilters"
+                    >
                         <option value="all">All statuses</option>
                         <option
                             v-for="state in [
@@ -398,12 +822,40 @@ function status(c: any) {
                                 'Ended',
                             ]"
                             :key="state"
-                            :value="state"
+                            :value="state.toLowerCase()"
                         >
                             {{ state }}
                         </option>
                     </select></label
-                ><button
+                >
+                <label
+                    >Sort<select
+                        v-model="campaignSort"
+                        :disabled="
+                            busy || listLoading || !!pendingCampaignRecovery
+                        "
+                        @change="applyCampaignFilters"
+                    >
+                        <option value="newest">Newest first</option>
+                        <option value="oldest">Oldest first</option>
+                    </select></label
+                >
+                <button
+                    type="submit"
+                    class="button button-outline"
+                    :disabled="busy || listLoading || !!pendingCampaignRecovery"
+                >
+                    Search
+                </button>
+                <button
+                    type="button"
+                    class="button button-outline"
+                    :disabled="busy || listLoading || !!pendingCampaignRecovery"
+                    @click="refreshCampaigns"
+                >
+                    Refresh
+                </button>
+                <button
                     v-if="campaignSearch || statusFilter !== 'all'"
                     type="button"
                     class="button button-outline"
@@ -411,27 +863,67 @@ function status(c: any) {
                 >
                     Clear filters
                 </button>
+            </form>
+            <div
+                v-if="pendingCampaignRecovery"
+                class="campaign-recovery"
+                role="status"
+            >
+                <p>
+                    Unsaved campaign draft found.
+                    {{
+                        listLoading
+                            ? 'Checking access before restoring…'
+                            : 'Restore it before starting another campaign.'
+                    }}
+                </p>
+                <button
+                    type="button"
+                    class="button button-navy"
+                    :disabled="listLoading"
+                    @click="retryCampaignRecovery"
+                >
+                    Retry restoring draft
+                </button>
+                <button
+                    type="button"
+                    class="button button-outline"
+                    :disabled="listLoading"
+                    @click="discardPendingRecovery"
+                >
+                    Discard recovered draft
+                </button>
             </div>
+            <p v-if="listError" role="alert" class="form-error">
+                {{ listError }}
+            </p>
+            <p
+                v-if="listLoading || filtersPending || statusSnapshotExpired"
+                role="status"
+                class="commerce-small"
+            >
+                {{
+                    listLoading
+                        ? 'Updating campaigns…'
+                        : statusSnapshotExpired
+                          ? 'A schedule boundary passed. Refresh to update counts and matching rows.'
+                          : 'Filters changed. Updating results…'
+                }}
+            </p>
             <AdminTable
                 caption="Promotion campaigns"
+                :columns="campaignColumns"
+                resizable-columns
+                resizable-height
+                v-model:viewport-height="listHeight"
                 :empty="!visibleCampaigns.length"
-                :busy="busy"
+                :busy="busy || listLoading"
                 :empty-text="
-                    campaigns.length
+                    campaignCounts.total
                         ? 'No campaigns match these filters. Try another name or status.'
                         : 'No campaigns yet. Create one when you are ready; regular prices stay unchanged.'
                 "
             >
-                <template #header>
-                    <tr>
-                        <th scope="col">Campaign</th>
-                        <th scope="col">Coverage</th>
-                        <th scope="col">Discount</th>
-                        <th scope="col">Period</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Action</th>
-                    </tr>
-                </template>
                 <tr v-for="c in visibleCampaigns" :key="c.id">
                     <th scope="row">{{ c.name }}</th>
                     <td>
@@ -463,12 +955,30 @@ function status(c: any) {
                     <td>
                         <AdminActionMenu
                             :label="`Actions for ${c.name}`"
-                            :disabled="busy"
+                            :disabled="
+                                busy ||
+                                listLoading ||
+                                filtersPending ||
+                                !!pendingCampaignRecovery
+                            "
                             :items="[{ id: 'edit', label: 'Edit campaign' }]"
                             @select="edit(c)"
                         />
                     </td>
                 </tr>
+                <template v-if="campaignPage" #footer>
+                    <AdminPagination
+                        :page="campaignPage.page"
+                        :per-page="campaignPage.per_page"
+                        :total="campaignPage.filtered_total"
+                        :last-page="campaignPage.last_page"
+                        :from="campaignPage.from"
+                        :to="campaignPage.to"
+                        :busy="busy || listLoading || filtersPending"
+                        @page="changeCampaignPage"
+                        @per-page="changeCampaignSize"
+                    />
+                </template>
             </AdminTable>
         </section>
         <AdminDrawer
@@ -479,6 +989,10 @@ function status(c: any) {
             :dirty="dirty"
             @close="closeEditor"
         >
+            <p v-if="draftRecovered" role="status" class="commerce-small">
+                Unsaved draft restored. Review before saving; newer server
+                changes will require a reload.
+            </p>
             <p class="commerce-muted">
                 Times use your browser’s local time zone and are stored in UTC.
                 Discounts end automatically at the end time. The best eligible
@@ -580,6 +1094,7 @@ function status(c: any) {
                                 id="campaign-start"
                                 v-model="form.starts_at"
                                 type="datetime-local"
+                                step="0.001"
                                 required
                             />
                         </div>
@@ -589,6 +1104,7 @@ function status(c: any) {
                                 id="campaign-end"
                                 v-model="form.ends_at"
                                 type="datetime-local"
+                                step="0.001"
                                 :min="form.starts_at"
                                 required
                             />
