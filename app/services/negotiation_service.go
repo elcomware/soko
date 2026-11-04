@@ -12,29 +12,43 @@ func DecideOffer(id, status string, u *models.User) error {
 	if status != "accepted" && status != "declined" {
 		return errors.New("choose accepted or declined")
 	}
-	if !u.HasPermission("offers.decide") {
+	if u == nil || !u.HasPermission("offers.decide") {
 		return errors.New("access denied")
 	}
-	var offer models.Offer
-	if err := facades.Orm().Query().Where("id = ?", id).First(&offer); err != nil {
-		return err
-	}
-	var p models.Product
-	if err := facades.Orm().Query().Where("id = ?", offer.ProductID).First(&p); err != nil {
-		return err
-	}
-	if offer.ID == "" || !u.Can("offers.decide", p.VendorID) {
-		return errors.New("offer not found or access denied")
-	}
-	result, err := facades.Orm().Query().Model(&models.Offer{}).Where("id = ? AND status = ?", id, models.OfferStatusPending).Update(map[string]any{"status": status, "updated_at": time.Now()})
-	if err != nil {
-		return err
-	}
-	if result.RowsAffected != 1 {
-		return errors.New("offer has already been reviewed")
-	}
-	return nil
+	return facades.Orm().Transaction(func(tx orm.Query) error {
+		// Serialize decisions before reading state, then lock the referenced product
+		// before checking ownership so reassignment/deletion cannot race authorization.
+		if _, err := tx.Exec("UPDATE offers SET id = id WHERE id = ?", id); err != nil {
+			return err
+		}
+		var offer models.Offer
+		if err := tx.Where("id = ?", id).First(&offer); err != nil {
+			return err
+		}
+		if offer.ID == "" {
+			return errors.New("offer not found or access denied")
+		}
+		if _, err := tx.Exec("UPDATE products SET id = id WHERE id = ?", offer.ProductID); err != nil {
+			return err
+		}
+		var product models.Product
+		if err := tx.Where("id = ?", offer.ProductID).First(&product); err != nil {
+			return err
+		}
+		if product.ID == "" || !u.Can("offers.decide", product.VendorID) {
+			return errors.New("offer not found or access denied")
+		}
+		result, err := tx.Model(&models.Offer{}).Where("id = ? AND status = ?", id, models.OfferStatusPending).Update(map[string]any{"status": status, "updated_at": time.Now()})
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("offer has already been reviewed")
+		}
+		return nil
+	})
 }
+
 func ResolveRfq(id, quoteID string, closeOnly bool, u *models.User) error {
 	return resolveRfq(id, quoteID, closeOnly, u, nil)
 }

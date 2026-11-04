@@ -247,7 +247,12 @@
                     </p>
                 </form>
                 <div
-                    v-else-if="!(section === 'orders' && orderPage)"
+                    v-else-if="
+                        !(section === 'orders' && orderPage) &&
+                        !(section === 'users' && userPage) &&
+                        !(section === 'offers' && offerPage) &&
+                        !(section === 'rfqs' && rfqPage)
+                    "
                     class="workspace-toolbar"
                 >
                     <label class="workspace-search"
@@ -375,7 +380,10 @@
                 <div
                     v-if="
                         !visibleRecords.length &&
-                        !(section === 'orders' && orderPage)
+                        !(section === 'orders' && orderPage) &&
+                        !(section === 'users' && userPage) &&
+                        !(section === 'offers' && offerPage) &&
+                        !(section === 'rfqs' && rfqPage)
                     "
                     class="workspace-panel workspace-empty"
                 >
@@ -690,17 +698,144 @@
                 <AdminTable
                     v-else-if="section === 'rfqs'"
                     caption="Sourcing requests"
+                    :columns="rfqColumns"
+                    :sort="{
+                        key: 'created_at',
+                        direction:
+                            rfqFilters.sort === 'oldest' ? 'asc' : 'desc',
+                    }"
+                    resizable-columns
+                    :viewport-height="520"
+                    resizable-height
+                    :empty="!visibleRecords.length"
+                    empty-text="No requests match these filters."
+                    :busy="rfqListLoading"
+                    @sort="sortRfqColumn"
                     class="workspace-admin-list"
                 >
-                    <template #header
-                        ><tr>
-                            <th scope="col">Request</th>
-                            <th scope="col">Buyer</th>
-                            <th scope="col">Quantity / target</th>
-                            <th scope="col">Destination</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Actions</th>
-                        </tr></template
+                    <template v-if="rfqPage" #toolbar
+                        ><form
+                            class="order-search-toolbar"
+                            @submit.prevent="applyRfqFilters"
+                        >
+                            <label
+                                >Search requests<input
+                                    v-model="rfqFilters.q"
+                                    type="search"
+                                    maxlength="120"
+                                    placeholder="Request, category or buyer"
+                                    :disabled="busy" /></label
+                            ><button
+                                type="submit"
+                                class="button button-outline"
+                                :disabled="busy || rfqListLoading"
+                            >
+                                Search</button
+                            ><button
+                                v-if="
+                                    rfqFilters.q ||
+                                    rfqFilters.status ||
+                                    rfqFilters.sort !== 'newest'
+                                "
+                                type="button"
+                                class="button button-outline"
+                                :disabled="busy"
+                                @click="resetRfqFilters"
+                            >
+                                Reset filters
+                            </button>
+                            <div
+                                v-if="pendingQuoteDraft"
+                                class="operation-error"
+                            >
+                                <p>
+                                    An unsent quotation draft is saved in this
+                                    browser history.
+                                </p>
+                                <button
+                                    type="button"
+                                    class="button button-outline"
+                                    :disabled="busy || rfqListLoading"
+                                    @click="recoverQuoteDraft"
+                                >
+                                    Reopen draft
+                                </button>
+                                <button
+                                    type="button"
+                                    class="button button-outline"
+                                    :disabled="busy"
+                                    @click="quoteDiscardPending = true"
+                                >
+                                    Discard draft…
+                                </button>
+                                <div v-if="quoteDiscardPending">
+                                    <p>Discard the unsent quotation?</p>
+                                    <button
+                                        type="button"
+                                        class="button button-outline"
+                                        :disabled="busy"
+                                        @click="discardQuoteDraft"
+                                    >
+                                        Discard quotation</button
+                                    ><button
+                                        type="button"
+                                        class="button button-outline"
+                                        :disabled="busy"
+                                        @click="quoteDiscardPending = false"
+                                    >
+                                        Keep draft
+                                    </button>
+                                </div>
+                                <p v-if="quoteRecoveryError" role="alert">
+                                    {{ quoteRecoveryError }}
+                                </p>
+                            </div>
+                            <p role="status">
+                                {{ rfqListLoading ? 'Updating… ' : ''
+                                }}{{ rfqPage.filtered_total }} matching ·
+                                {{ rfqPage.total }} authorized requests
+                            </p>
+                            <p
+                                v-if="rfqListError"
+                                role="alert"
+                                class="form-error"
+                            >
+                                {{ rfqListError }}
+                            </p>
+                        </form></template
+                    >
+                    <template v-if="rfqPage" #filters
+                        ><div class="order-filter-fields">
+                            <label
+                                >Status<select
+                                    v-model="rfqFilters.status"
+                                    :disabled="busy || rfqListLoading"
+                                    @change="applyRfqFilters"
+                                >
+                                    <option value="">All statuses</option>
+                                    <option
+                                        v-for="status in [
+                                            'open',
+                                            'closed',
+                                            'awarded',
+                                        ]"
+                                        :key="status"
+                                        :value="status"
+                                    >
+                                        {{ humanize(status) }}
+                                    </option>
+                                </select></label
+                            ><label
+                                >Received<select
+                                    v-model="rfqFilters.sort"
+                                    :disabled="busy || rfqListLoading"
+                                    @change="applyRfqFilters"
+                                >
+                                    <option value="newest">Newest first</option>
+                                    <option value="oldest">Oldest first</option>
+                                </select></label
+                            >
+                        </div></template
                     >
                     <tr v-for="rfq in visibleRecords" :key="rfq.id">
                         <th scope="row">
@@ -708,7 +843,7 @@
                                 type="button"
                                 class="operation-identity"
                                 :aria-label="`View request ${rfq.title}`"
-                                :disabled="busy"
+                                :disabled="busy || rfqListLoading"
                                 @click="openRecord('rfqs', rfq)"
                             >
                                 {{ rfq.title }}</button
@@ -740,25 +875,120 @@
                             <AdminActionMenu
                                 :label="`Actions for request ${rfq.title}`"
                                 :items="operationActions('rfqs', rfq)"
-                                :disabled="busy"
+                                :disabled="busy || rfqListLoading"
                                 @select="(id) => openRecord('rfqs', rfq, id)"
                             />
                         </td>
                     </tr>
+                    <template v-if="rfqPage" #footer
+                        ><AdminPagination
+                            :page="rfqPage.page"
+                            :per-page="rfqPage.per_page"
+                            :total="rfqPage.filtered_total"
+                            :last-page="rfqPage.last_page"
+                            :from="rfqPage.from"
+                            :to="rfqPage.to"
+                            :busy="busy || rfqListLoading || rfqFiltersPending"
+                            @page="changeRfqPage"
+                            @per-page="changeRfqPageSize"
+                    /></template>
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'offers'"
                     caption="Buyer offers"
+                    :columns="offerColumns"
+                    :sort="{
+                        key: 'created_at',
+                        direction:
+                            offerFilters.sort === 'oldest' ? 'asc' : 'desc',
+                    }"
+                    resizable-columns
+                    :viewport-height="520"
+                    resizable-height
+                    :empty="!visibleRecords.length"
+                    empty-text="No offers match these filters."
+                    :busy="offerListLoading"
+                    @sort="sortOfferColumn"
                     class="workspace-admin-list"
                 >
-                    <template #header
-                        ><tr>
-                            <th scope="col">Product / received</th>
-                            <th scope="col">Buyer</th>
-                            <th scope="col">Proposal</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Actions</th>
-                        </tr></template
+                    <template v-if="offerPage" #toolbar
+                        ><form
+                            class="order-search-toolbar"
+                            @submit.prevent="applyOfferFilters"
+                        >
+                            <label
+                                >Search offers<input
+                                    v-model="offerFilters.q"
+                                    type="search"
+                                    maxlength="120"
+                                    placeholder="Product, buyer or status"
+                                    :disabled="busy" /></label
+                            ><button
+                                type="submit"
+                                class="button button-outline"
+                                :disabled="busy"
+                            >
+                                Search</button
+                            ><button
+                                v-if="
+                                    offerFilters.q ||
+                                    offerFilters.status ||
+                                    offerFilters.sort !== 'newest'
+                                "
+                                type="button"
+                                class="button button-outline"
+                                :disabled="busy"
+                                @click="resetOfferFilters"
+                            >
+                                Reset filters
+                            </button>
+                            <p role="status">
+                                {{ offerListLoading ? 'Updating… ' : ''
+                                }}{{ offerPage.filtered_total }} matching ·
+                                {{ offerPage.total }} authorized offers
+                            </p>
+                            <p
+                                v-if="offerListError"
+                                role="alert"
+                                class="form-error"
+                            >
+                                {{ offerListError }}
+                            </p>
+                        </form></template
+                    >
+                    <template v-if="offerPage" #filters
+                        ><div class="order-filter-fields">
+                            <label
+                                >Status<select
+                                    v-model="offerFilters.status"
+                                    :disabled="busy"
+                                    @change="applyOfferFilters"
+                                >
+                                    <option value="">All statuses</option>
+                                    <option
+                                        v-for="status in [
+                                            'pending',
+                                            'accepted',
+                                            'declined',
+                                            'countered',
+                                        ]"
+                                        :key="status"
+                                        :value="status"
+                                    >
+                                        {{ humanize(status) }}
+                                    </option>
+                                </select></label
+                            ><label
+                                >Received<select
+                                    v-model="offerFilters.sort"
+                                    :disabled="busy"
+                                    @change="applyOfferFilters"
+                                >
+                                    <option value="newest">Newest first</option>
+                                    <option value="oldest">Oldest first</option>
+                                </select></label
+                            >
+                        </div></template
                     >
                     <tr v-for="offer in visibleRecords" :key="offer.id">
                         <th scope="row">
@@ -766,7 +996,7 @@
                                 type="button"
                                 class="operation-identity"
                                 :aria-label="`View offer ${offer.product_title}`"
-                                :disabled="busy"
+                                :disabled="busy || offerListLoading"
                                 @click="openRecord('offers', offer)"
                             >
                                 {{ offer.product_title }}</button
@@ -792,40 +1022,150 @@
                             <AdminActionMenu
                                 :label="`Actions for offer on ${offer.product_title}`"
                                 :items="operationActions('offers', offer)"
-                                :disabled="busy"
+                                :disabled="busy || offerListLoading"
                                 @select="
                                     (id) => openRecord('offers', offer, id)
                                 "
                             />
                         </td>
                     </tr>
+                    <template v-if="offerPage" #footer
+                        ><AdminPagination
+                            :page="offerPage.page"
+                            :per-page="offerPage.per_page"
+                            :total="offerPage.filtered_total"
+                            :last-page="offerPage.last_page"
+                            :from="offerPage.from"
+                            :to="offerPage.to"
+                            :busy="
+                                busy || offerListLoading || offerFiltersPending
+                            "
+                            @page="changeOfferPage"
+                            @per-page="changeOfferPageSize"
+                    /></template>
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'users'"
                     caption="Marketplace accounts"
-                    :busy="busy"
+                    :columns="userColumns"
+                    :sort="{
+                        key: 'created_at',
+                        direction:
+                            userFilters.sort === 'oldest' ? 'asc' : 'desc',
+                    }"
+                    resizable-columns
+                    :viewport-height="520"
+                    resizable-height
+                    :empty="!visibleRecords.length"
+                    empty-text="No accounts match these filters."
+                    @sort="sortUserColumn"
+                    :busy="busy || userListLoading"
                     class="workspace-admin-list"
-                    ><template #header>
-                        <tr>
-                            <th scope="col">Account</th>
-                            <th scope="col">Role</th>
-                            <th scope="col">Company</th>
-                            <th scope="col">Country</th>
-                            <th scope="col">Verification</th>
-                            <th scope="col">Actions</th>
-                        </tr>
-                    </template>
+                >
+                    <template v-if="userPage" #toolbar
+                        ><form
+                            class="order-search-toolbar"
+                            @submit.prevent="applyUserFilters"
+                        >
+                            <label
+                                >Search accounts<input
+                                    v-model="userFilters.q"
+                                    type="search"
+                                    maxlength="120"
+                                    placeholder="Name, email, company or country"
+                                    :disabled="busy" /></label
+                            ><button
+                                type="submit"
+                                class="button button-outline"
+                                :disabled="busy"
+                            >
+                                Search</button
+                            ><button
+                                v-if="
+                                    userFilters.q ||
+                                    userFilters.role ||
+                                    userFilters.verification ||
+                                    userFilters.sort !== 'newest'
+                                "
+                                type="button"
+                                class="button button-outline"
+                                :disabled="busy"
+                                @click="resetUserFilters"
+                            >
+                                Reset filters
+                            </button>
+                            <p role="status">
+                                {{ userListLoading ? 'Updating… ' : ''
+                                }}{{ userPage.filtered_total }} matching ·
+                                {{ userPage.total }} authorized accounts
+                            </p>
+                            <p
+                                v-if="userListError"
+                                role="alert"
+                                class="form-error"
+                            >
+                                {{ userListError }}
+                            </p>
+                        </form></template
+                    >
+                    <template v-if="userPage" #filters
+                        ><div class="order-filter-fields">
+                            <label
+                                >Role<select
+                                    v-model="userFilters.role"
+                                    :disabled="busy"
+                                    @change="applyUserFilters"
+                                >
+                                    <option value="">All roles</option>
+                                    <option
+                                        v-for="role in [
+                                            'admin',
+                                            'merchant',
+                                            'buyer',
+                                        ]"
+                                        :key="role"
+                                        :value="role"
+                                    >
+                                        {{ humanize(role) }}
+                                    </option>
+                                </select></label
+                            ><label
+                                >Joined<select
+                                    v-model="userFilters.sort"
+                                    :disabled="busy"
+                                    @change="applyUserFilters"
+                                >
+                                    <option value="newest">Newest first</option>
+                                    <option value="oldest">Oldest first</option>
+                                </select></label
+                            >
+                            <label
+                                >Verification<select
+                                    v-model="userFilters.verification"
+                                    :disabled="busy"
+                                    @change="applyUserFilters"
+                                >
+                                    <option value="">All accounts</option>
+                                    <option value="verified">Verified</option>
+                                    <option value="unverified">
+                                        Unverified
+                                    </option>
+                                </select></label
+                            >
+                        </div></template
+                    >
                     <tr v-for="user in visibleRecords" :key="user.id">
                         <th scope="row">
                             <button
                                 type="button"
                                 class="operation-identity"
                                 :aria-label="`View account ${user.name}`"
-                                :disabled="busy"
+                                :disabled="busy || userListLoading"
                                 @click="openRecord('users', user)"
                             >
                                 {{ user.name }}</button
-                            ><small>{{ user.email }}</small>
+                            ><small>{{ user.email }}</small
+                            ><small>{{ dateLabel(user.created_at) }}</small>
                         </th>
                         <td>{{ humanize(user.role) }}</td>
                         <td>
@@ -847,6 +1187,7 @@
                             <button
                                 type="button"
                                 class="admin-view-link"
+                                :disabled="busy || userListLoading"
                                 :aria-label="`View account ${user.name}`"
                                 @click="openRecord('users', user)"
                             >
@@ -854,6 +1195,20 @@
                             </button>
                         </td>
                     </tr>
+                    <template v-if="userPage" #footer
+                        ><AdminPagination
+                            :page="userPage.page"
+                            :per-page="userPage.per_page"
+                            :total="userPage.filtered_total"
+                            :last-page="userPage.last_page"
+                            :from="userPage.from"
+                            :to="userPage.to"
+                            :busy="
+                                busy || userListLoading || userFiltersPending
+                            "
+                            @page="changeUserPage"
+                            @per-page="changeUserPageSize"
+                    /></template>
                 </AdminTable>
             </template>
         </div>
@@ -968,6 +1323,15 @@
                     </ul>
                 </template>
                 <template v-else-if="detailKind === 'rfqs'">
+                    <button
+                        v-if="rfqPage"
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy"
+                        @click="refreshSelectedRfq"
+                    >
+                        Refresh request details
+                    </button>
                     <dl class="operation-facts">
                         <div>
                             <dt>Buyer</dt>
@@ -1007,8 +1371,11 @@
                     </p>
                     <h3>Visible quotations</h3>
                     <p class="operation-scope-note">
-                        Only quotations your account can access are listed. This
-                        is not necessarily the full set of competing quotes.
+                        {{
+                            selectedRfqVisibility === 'full'
+                                ? 'All quotations for this request are shown.'
+                                : 'Only your supplier quotations are shown. Competing quotations are not included.'
+                        }}
                     </p>
                     <p v-if="!(detailRecord.quotes || []).length">
                         No quotations are visible to your account.
@@ -1044,6 +1411,15 @@
                     </ul>
                 </template>
                 <template v-else-if="detailKind === 'offers'">
+                    <button
+                        v-if="offerPage"
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy"
+                        @click="refreshSelectedOffer"
+                    >
+                        Refresh offer details
+                    </button>
                     <Link
                         :href="`/products/${detailRecord.product_id}`"
                         class="admin-view-link"
@@ -1086,6 +1462,15 @@
                     </p>
                 </template>
                 <template v-else-if="detailKind === 'users'">
+                    <button
+                        v-if="userPage"
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy"
+                        @click="refreshSelectedUser"
+                    >
+                        Refresh account details
+                    </button>
                     <dl class="operation-facts">
                         <div>
                             <dt>Email</dt>
@@ -1772,63 +2157,67 @@
                 novalidate
                 @submit.prevent="saveQuote"
             >
-                <div class="workspace-quote-context">
-                    <strong>{{ quoteTarget?.title }}</strong>
-                    <p>
-                        {{ quoteTarget?.quantity }} units ·
-                        {{ quoteTarget?.destination_country }}
+                <fieldset :disabled="busy" class="product-editor-fields">
+                    <div class="workspace-quote-context">
+                        <strong>{{ quoteTarget?.title }}</strong>
+                        <p>
+                            {{ quoteTarget?.quantity }} units ·
+                            {{ quoteTarget?.destination_country }}
+                        </p>
+                    </div>
+                    <p
+                        v-if="formError"
+                        id="quote-errors"
+                        role="alert"
+                        class="form-error"
+                    >
+                        {{ formError }}
                     </p>
-                </div>
-                <p
-                    v-if="formError"
-                    id="quote-errors"
-                    role="alert"
-                    class="form-error"
-                >
-                    {{ formError }}
-                </p>
-                <div class="form-row">
-                    <div class="soko-field">
-                        <label for="quote-price">Unit price (USD)</label
-                        ><input
-                            id="quote-price"
-                            v-model.number="quoteForm.unit_price"
-                            type="number"
-                            name="unit_price"
-                            required
-                            min="0.01"
-                            step="0.01"
-                            :aria-invalid="invalidFields.includes('unit_price')"
-                            aria-describedby="quote-errors"
-                        />
+                    <div class="form-row">
+                        <div class="soko-field">
+                            <label for="quote-price">Unit price (USD)</label
+                            ><input
+                                id="quote-price"
+                                v-model.number="quoteForm.unit_price"
+                                type="number"
+                                name="unit_price"
+                                required
+                                min="0.01"
+                                step="0.01"
+                                :aria-invalid="
+                                    invalidFields.includes('unit_price')
+                                "
+                                aria-describedby="quote-errors"
+                            />
+                        </div>
+                        <div class="soko-field">
+                            <label for="quote-lead">Lead time (days)</label
+                            ><input
+                                id="quote-lead"
+                                v-model.number="quoteForm.lead_time_days"
+                                type="number"
+                                name="lead_time_days"
+                                required
+                                min="1"
+                                step="1"
+                                :aria-invalid="
+                                    invalidFields.includes('lead_time_days')
+                                "
+                                aria-describedby="quote-errors"
+                            />
+                        </div>
                     </div>
                     <div class="soko-field">
-                        <label for="quote-lead">Lead time (days)</label
-                        ><input
-                            id="quote-lead"
-                            v-model.number="quoteForm.lead_time_days"
-                            type="number"
-                            name="lead_time_days"
-                            required
-                            min="1"
-                            step="1"
-                            :aria-invalid="
-                                invalidFields.includes('lead_time_days')
-                            "
-                            aria-describedby="quote-errors"
+                        <label for="quote-notes">Notes and shipping terms</label
+                        ><textarea
+                            class="resize-none"
+                            id="quote-notes"
+                            v-model="quoteForm.notes"
+                            rows="4"
+                            placeholder="Describe what's included, shipping terms and any conditions."
                         />
                     </div>
-                </div>
-                <div class="soko-field">
-                    <label for="quote-notes">Notes and shipping terms</label
-                    ><textarea
-                        class="resize-none"
-                        id="quote-notes"
-                        v-model="quoteForm.notes"
-                        rows="4"
-                        placeholder="Describe what's included, shipping terms and any conditions."
-                    />
-                </div>
+                </fieldset>
             </form>
             <template #footer="{ requestClose }"
                 ><div class="workspace-form-actions">
@@ -1904,6 +2293,44 @@ const props = defineProps<{
     selectedOrder?: RecordData | null
     selectedOrderStatus?: 'none' | 'available' | 'unavailable'
     orderVisibility?: 'full' | 'supplier' | 'none'
+    userPage?: {
+        page: number
+        per_page: number
+        total: number
+        filtered_total: number
+        last_page: number
+        from: number
+        to: number
+        filters: { q: string; role: string; verification: string; sort: string }
+    } | null
+    selectedUser?: RecordData | null
+    selectedUserStatus?: 'none' | 'available' | 'unavailable'
+    offerPage?: {
+        page: number
+        per_page: number
+        total: number
+        filtered_total: number
+        last_page: number
+        from: number
+        to: number
+        filters: { q: string; status: string; sort: string }
+    } | null
+    selectedOffer?: RecordData | null
+    selectedOfferStatus?: 'none' | 'available' | 'unavailable'
+    offerVisibility?: 'full' | 'supplier' | 'none'
+    rfqPage?: {
+        page: number
+        per_page: number
+        total: number
+        filtered_total: number
+        last_page: number
+        from: number
+        to: number
+        filters: { q: string; status: string; sort: string }
+    } | null
+    selectedRfq?: RecordData | null
+    selectedRfqStatus?: 'none' | 'available' | 'unavailable'
+    rfqVisibility?: 'full' | 'supplier' | 'none'
     users?: RecordData[] | null
     rfqs?: RecordData[] | null
     offers?: RecordData[] | null
@@ -1937,12 +2364,32 @@ const refreshedOrderAccess = ref<{
     permissions: Record<string, boolean>
 } | null>(null)
 const selectedOrderVisibility = ref<'full' | 'supplier'>('supplier')
+const refreshedRfqAccess = ref<{
+    id: string
+    permissions: Record<string, boolean>
+    quotes: Record<string, Record<string, boolean>>
+} | null>(null)
+const selectedRfqVisibility = ref<'full' | 'supplier'>('supplier')
+const refreshedOfferAccess = ref<{
+    id: string
+    permissions: Record<string, boolean>
+} | null>(null)
+const selectedOfferVisibility = ref<'full' | 'supplier'>('supplier')
 const recordCan = (kind: string, id: string, action: string) =>
-    kind === 'orders' && refreshedOrderAccess.value?.id === id
-        ? refreshedOrderAccess.value.permissions[action] === true
-        : kind === 'products' && refreshedProductAccess.value?.id === id
-          ? refreshedProductAccess.value.permissions[action] === true
-          : props.recordCapabilities?.[kind]?.[id]?.[action] === true
+    kind === 'offers' && refreshedOfferAccess.value?.id === id
+        ? refreshedOfferAccess.value.permissions[action] === true
+        : kind === 'rfqs' && refreshedRfqAccess.value?.id === id
+          ? refreshedRfqAccess.value.permissions[action] === true
+          : kind === 'quotes' &&
+              refreshedRfqAccess.value &&
+              detailKind.value === 'rfqs' &&
+              detailRecord.value?.id === refreshedRfqAccess.value.id
+            ? refreshedRfqAccess.value.quotes[id]?.[action] === true
+            : kind === 'orders' && refreshedOrderAccess.value?.id === id
+              ? refreshedOrderAccess.value.permissions[action] === true
+              : kind === 'products' && refreshedProductAccess.value?.id === id
+                ? refreshedProductAccess.value.permissions[action] === true
+                : props.recordCapabilities?.[kind]?.[id]?.[action] === true
 const detailRecord = ref<RecordData | null>(null)
 const detailKind = ref('')
 const pendingOperation = ref('')
@@ -1999,6 +2446,11 @@ const operationActions = (kind: string, record: RecordData) => [
         : []),
 ]
 function openRecord(kind: string, record: RecordData, action = 'view') {
+    if (
+        quoteTarget.value ||
+        (kind === 'rfqs' && action === 'quote' && pendingQuoteDraft.value)
+    )
+        return
     if (kind === 'orders') {
         if (busy.value || orderListLoading.value) return
         if (orderSearchTimer) clearTimeout(orderSearchTimer)
@@ -2011,6 +2463,45 @@ function openRecord(kind: string, record: RecordData, action = 'view') {
             selectedOrderVisibility.value =
                 props.orderVisibility === 'full' ? 'full' : 'supplier'
             refreshedOrderAccess.value = null
+        }
+    }
+    if (kind === 'users') {
+        if (busy.value || userListLoading.value) return
+        if (userSearchTimer) clearTimeout(userSearchTimer)
+        userQueuedSearch = false
+        if (
+            detailKind.value !== 'users' ||
+            detailRecord.value?.id !== record.id
+        ) {
+            userReturnUrl.value = userListUrl()
+        }
+    }
+    if (kind === 'offers') {
+        if (busy.value || offerListLoading.value) return
+        if (offerSearchTimer) clearTimeout(offerSearchTimer)
+        offerQueuedSearch = false
+        if (
+            detailKind.value !== 'offers' ||
+            detailRecord.value?.id !== record.id
+        ) {
+            offerReturnUrl.value = offerListUrl()
+            selectedOfferVisibility.value =
+                props.offerVisibility === 'full' ? 'full' : 'supplier'
+            refreshedOfferAccess.value = null
+        }
+    }
+    if (kind === 'rfqs') {
+        if (busy.value || rfqListLoading.value) return
+        if (rfqSearchTimer) clearTimeout(rfqSearchTimer)
+        rfqQueuedSearch = false
+        if (
+            detailKind.value !== 'rfqs' ||
+            detailRecord.value?.id !== record.id
+        ) {
+            rfqReturnUrl.value = rfqListUrl()
+            selectedRfqVisibility.value =
+                props.rfqVisibility === 'full' ? 'full' : 'supplier'
+            refreshedRfqAccess.value = null
         }
     }
     if (
@@ -2137,7 +2628,9 @@ function confirmOperation() {
     const returnOrderUrl =
         detailKind.value === 'orders'
             ? orderReturnUrl.value || orderListUrl()
-            : ''
+            : detailKind.value === 'rfqs'
+              ? rfqReturnUrl.value || rfqListUrl()
+              : ''
     mutate(
         url,
         action === 'award'
@@ -2161,6 +2654,18 @@ function confirmOperation() {
     )
 }
 function refreshRecord() {
+    if (detailKind.value === 'rfqs' && props.rfqPage) {
+        void refreshSelectedRfq()
+        return
+    }
+    if (detailKind.value === 'offers' && props.offerPage) {
+        void refreshSelectedOffer()
+        return
+    }
+    if (detailKind.value === 'users' && props.userPage) {
+        void refreshSelectedUser()
+        return
+    }
     if (detailKind.value === 'orders' && props.orderPage) {
         void refreshSelectedOrder()
         return
@@ -2271,7 +2776,7 @@ const navigation = computed(() => [
                   id: 'rfqs',
                   label: 'Sourcing requests',
                   icon: 'globe',
-                  count: rfqList.value.length,
+                  count: props.rfqPage?.total ?? rfqList.value.length,
               },
           ]
         : []),
@@ -2281,7 +2786,7 @@ const navigation = computed(() => [
                   id: 'offers',
                   label: 'Buyer offers',
                   icon: 'document',
-                  count: offerList.value.length,
+                  count: props.offerPage?.total ?? offerList.value.length,
               },
           ]
         : []),
@@ -2291,7 +2796,7 @@ const navigation = computed(() => [
                   id: 'users',
                   label: 'Accounts',
                   icon: 'user',
-                  count: (props.users || []).length,
+                  count: props.userPage?.total ?? (props.users || []).length,
               },
           ]
         : []),
@@ -2570,6 +3075,718 @@ onBeforeUnmount(() => {
     orderRefreshController?.abort()
     if (orderSearchTimer) clearTimeout(orderSearchTimer)
 })
+const userFilters = reactive({
+    q: props.userPage?.filters.q || '',
+    role: props.userPage?.filters.role || '',
+    verification: props.userPage?.filters.verification || '',
+    sort: props.userPage?.filters.sort || 'newest',
+    per_page: props.userPage?.per_page || 25,
+})
+const userListLoading = ref(false)
+const userListError = ref('')
+const userReturnUrl = ref('')
+let userSearchTimer: ReturnType<typeof setTimeout> | undefined
+let userQueuedSearch = false
+let userSubmittedFilters = ''
+let userDisposed = false
+let userRefreshController: AbortController | undefined
+const userSignature = () => JSON.stringify(userFilters)
+const userFiltersPending = computed(() =>
+    props.userPage
+        ? userFilters.q !== props.userPage.filters.q ||
+          userFilters.role !== props.userPage.filters.role ||
+          userFilters.verification !== props.userPage.filters.verification ||
+          userFilters.sort !== props.userPage.filters.sort ||
+          userFilters.per_page !== props.userPage.per_page
+        : false
+)
+const userColumns = computed(() => [
+    {
+        key: 'created_at',
+        label: 'Account / joined',
+        sortable: true,
+        width: 250,
+        minWidth: 180,
+    },
+    { key: 'role', label: 'Role', width: 130, minWidth: 110 },
+    { key: 'company', label: 'Company', width: 190, minWidth: 140 },
+    { key: 'country', label: 'Country', width: 150, minWidth: 120 },
+    { key: 'verification', label: 'Verification', width: 140, minWidth: 110 },
+    { key: 'actions', label: 'Actions', width: 120, minWidth: 100 },
+])
+function userListUrl(
+    pageNumber = props.userPage?.page || 1,
+    filters = props.userPage?.filters || userFilters,
+    perPage = props.userPage?.per_page || userFilters.per_page
+) {
+    const query = new URLSearchParams({
+        section: 'users',
+        sort: filters.sort || 'newest',
+        page: String(pageNumber),
+        per_page: String(perPage),
+    })
+    if (filters.q) query.set('q', filters.q)
+    if (filters.role) query.set('role', filters.role)
+    if (filters.verification) query.set('verification', filters.verification)
+    return '/dashboard?' + query.toString()
+}
+watch(
+    () => props.userPage,
+    (value) => {
+        if (
+            value &&
+            (!userListLoading.value || userSignature() === userSubmittedFilters)
+        )
+            Object.assign(userFilters, value.filters, {
+                per_page: value.per_page,
+            })
+    },
+    { deep: true, flush: 'sync' }
+)
+function visitUserList(url: string) {
+    if (
+        userDisposed ||
+        section.value !== 'users' ||
+        busy.value ||
+        detailRecord.value
+    )
+        return
+    if (userListLoading.value) {
+        userQueuedSearch = true
+        return
+    }
+    if (userSearchTimer) clearTimeout(userSearchTimer)
+    userQueuedSearch = false
+    userSubmittedFilters = userSignature()
+    userListLoading.value = true
+    userListError.value = ''
+    router.get(
+        url,
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            onError: () => {
+                userListError.value =
+                    'Accounts could not be loaded. Previous results are still shown.'
+            },
+            onNetworkError: () => {
+                userListError.value =
+                    'Connection lost. Previous account results are still shown. Try again.'
+                return false
+            },
+            onHttpException: () => {
+                userListError.value =
+                    'Accounts could not be loaded. Previous results are still shown.'
+                return false
+            },
+            onFinish: () => {
+                userListLoading.value = false
+                if (userQueuedSearch) {
+                    userQueuedSearch = false
+                    void nextTick(applyUserFilters)
+                }
+            },
+        }
+    )
+}
+function applyUserFilters() {
+    visitUserList(userListUrl(1, userFilters, userFilters.per_page))
+}
+watch(
+    () => userFilters.q,
+    (value) => {
+        if (userSearchTimer) clearTimeout(userSearchTimer)
+        if (section.value !== 'users' || !props.userPage) return
+        if (userListLoading.value) {
+            if (userSignature() === userSubmittedFilters) return
+            userQueuedSearch = true
+        } else if (value === props.userPage.filters.q) return
+        userSearchTimer = setTimeout(applyUserFilters, value ? 350 : 0)
+    }
+)
+function resetUserFilters() {
+    if (busy.value || detailRecord.value) return
+    if (userSearchTimer) clearTimeout(userSearchTimer)
+    Object.assign(userFilters, {
+        q: '',
+        role: '',
+        verification: '',
+        sort: 'newest',
+        per_page: 25,
+    })
+    applyUserFilters()
+}
+function changeUserPage(number: number) {
+    if (
+        !props.userPage ||
+        userFiltersPending.value ||
+        number < 1 ||
+        number > props.userPage.last_page
+    )
+        return
+    visitUserList(userListUrl(number))
+}
+function changeUserPageSize(number: number) {
+    if (![25, 50, 100].includes(number) || busy.value || detailRecord.value)
+        return
+    userFilters.per_page = number
+    applyUserFilters()
+}
+function sortUserColumn(sort: { key: string; direction: 'asc' | 'desc' }) {
+    if (sort.key !== 'created_at' || busy.value || detailRecord.value) return
+    userFilters.sort = sort.direction === 'asc' ? 'oldest' : 'newest'
+    applyUserFilters()
+}
+async function refreshSelectedUser() {
+    if (busy.value || !detailRecord.value || detailKind.value !== 'users')
+        return
+    const id = detailRecord.value.id
+    busy.value = true
+    userRefreshController = new AbortController()
+    try {
+        const response = await fetch(
+            userListUrl() + '&selected_user=' + encodeURIComponent(id),
+            {
+                headers: {
+                    'X-Inertia': 'true',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Accept: 'application/json',
+                },
+                signal: userRefreshController.signal,
+                credentials: 'same-origin',
+                cache: 'no-store',
+            }
+        )
+        if (!response.ok) {
+            throw new Error(
+                'Could not refresh this account. The previous review is still displayed.'
+            )
+        }
+        const data = await response.json()
+        if (
+            userDisposed ||
+            section.value !== 'users' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        const record = data.props?.selectedUser
+        if (
+            data.props?.selectedUserStatus !== 'available' ||
+            !record ||
+            record.id !== id
+        ) {
+            throw new Error(
+                'This account is unavailable or no longer accessible. Close these details and review the directory.'
+            )
+        }
+        detailRecord.value = record
+        pendingOperation.value = ''
+        pendingQuote.value = null
+        formError.value = ''
+    } catch (error) {
+        if (
+            userDisposed ||
+            section.value !== 'users' ||
+            detailKind.value !== 'users' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        formError.value =
+            error instanceof Error
+                ? error.message
+                : 'Could not refresh this account. The previous review is still displayed.'
+    } finally {
+        busy.value = false
+    }
+}
+onBeforeUnmount(() => {
+    userDisposed = true
+    userRefreshController?.abort()
+    if (userSearchTimer) clearTimeout(userSearchTimer)
+})
+const offerFilters = reactive({
+    q: props.offerPage?.filters.q || '',
+    status: props.offerPage?.filters.status || '',
+    sort: props.offerPage?.filters.sort || 'newest',
+    per_page: props.offerPage?.per_page || 25,
+})
+const offerListLoading = ref(false)
+const offerListError = ref('')
+const offerReturnUrl = ref('')
+let offerSearchTimer: ReturnType<typeof setTimeout> | undefined
+let offerQueuedSearch = false
+let offerSubmittedFilters = ''
+let offerDisposed = false
+let offerRefreshController: AbortController | undefined
+const offerSignature = () => JSON.stringify(offerFilters)
+const offerFiltersPending = computed(() =>
+    props.offerPage
+        ? offerFilters.q !== props.offerPage.filters.q ||
+          offerFilters.status !== props.offerPage.filters.status ||
+          offerFilters.sort !== props.offerPage.filters.sort ||
+          offerFilters.per_page !== props.offerPage.per_page
+        : false
+)
+const offerColumns = computed(() => [
+    {
+        key: 'created_at',
+        label: 'Product / received',
+        sortable: true,
+        width: 260,
+        minWidth: 180,
+    },
+    { key: 'buyer', label: 'Buyer', width: 190, minWidth: 140 },
+    { key: 'proposal', label: 'Proposal', width: 190, minWidth: 150 },
+    { key: 'status', label: 'Status', width: 140, minWidth: 110 },
+    { key: 'actions', label: 'Actions', width: 100, minWidth: 90 },
+])
+function offerListUrl(
+    pageNumber = props.offerPage?.page || 1,
+    filters = props.offerPage?.filters || offerFilters,
+    perPage = props.offerPage?.per_page || offerFilters.per_page
+) {
+    const query = new URLSearchParams({
+        section: 'offers',
+        sort: filters.sort || 'newest',
+        page: String(pageNumber),
+        per_page: String(perPage),
+    })
+    if (filters.q) query.set('q', filters.q)
+    if (filters.status) query.set('status', filters.status)
+    return '/dashboard?' + query.toString()
+}
+watch(
+    () => props.offerPage,
+    (value) => {
+        if (
+            value &&
+            (!offerListLoading.value ||
+                offerSignature() === offerSubmittedFilters)
+        )
+            Object.assign(offerFilters, value.filters, {
+                per_page: value.per_page,
+            })
+    },
+    { deep: true, flush: 'sync' }
+)
+function visitOfferList(url: string) {
+    if (
+        offerDisposed ||
+        section.value !== 'offers' ||
+        busy.value ||
+        detailRecord.value
+    )
+        return
+    if (offerListLoading.value) {
+        offerQueuedSearch = true
+        return
+    }
+    if (offerSearchTimer) clearTimeout(offerSearchTimer)
+    offerQueuedSearch = false
+    offerSubmittedFilters = offerSignature()
+    offerListLoading.value = true
+    offerListError.value = ''
+    router.get(
+        url,
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            onError: () => {
+                offerListError.value =
+                    'Offers could not be loaded. Previous results are still shown.'
+            },
+            onNetworkError: () => {
+                offerListError.value =
+                    'Connection lost. Previous offer results are still shown. Try again.'
+                return false
+            },
+            onHttpException: () => {
+                offerListError.value =
+                    'Offers could not be loaded. Previous results are still shown.'
+                return false
+            },
+            onFinish: () => {
+                offerListLoading.value = false
+                if (offerQueuedSearch) {
+                    offerQueuedSearch = false
+                    void nextTick(applyOfferFilters)
+                }
+            },
+        }
+    )
+}
+function applyOfferFilters() {
+    visitOfferList(offerListUrl(1, offerFilters, offerFilters.per_page))
+}
+watch(
+    () => offerFilters.q,
+    (value) => {
+        if (offerSearchTimer) clearTimeout(offerSearchTimer)
+        if (section.value !== 'offers' || !props.offerPage) return
+        if (offerListLoading.value) {
+            if (offerSignature() === offerSubmittedFilters) return
+            offerQueuedSearch = true
+        } else if (value === props.offerPage.filters.q) return
+        offerSearchTimer = setTimeout(applyOfferFilters, value ? 350 : 0)
+    }
+)
+function resetOfferFilters() {
+    if (busy.value || detailRecord.value) return
+    if (offerSearchTimer) clearTimeout(offerSearchTimer)
+    Object.assign(offerFilters, {
+        q: '',
+        status: '',
+        sort: 'newest',
+        per_page: 25,
+    })
+    applyOfferFilters()
+}
+function changeOfferPage(number: number) {
+    if (
+        !props.offerPage ||
+        offerFiltersPending.value ||
+        number < 1 ||
+        number > props.offerPage.last_page
+    )
+        return
+    visitOfferList(offerListUrl(number))
+}
+function changeOfferPageSize(number: number) {
+    if (![25, 50, 100].includes(number) || busy.value || detailRecord.value)
+        return
+    offerFilters.per_page = number
+    applyOfferFilters()
+}
+function sortOfferColumn(sort: { key: string; direction: 'asc' | 'desc' }) {
+    if (sort.key !== 'created_at' || busy.value || detailRecord.value) return
+    offerFilters.sort = sort.direction === 'asc' ? 'oldest' : 'newest'
+    applyOfferFilters()
+}
+async function refreshSelectedOffer() {
+    if (busy.value || !detailRecord.value || detailKind.value !== 'offers')
+        return
+    const id = detailRecord.value.id
+    busy.value = true
+    offerRefreshController = new AbortController()
+    try {
+        const response = await fetch(
+            offerListUrl() + '&selected_offer=' + encodeURIComponent(id),
+            {
+                headers: {
+                    'X-Inertia': 'true',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Accept: 'application/json',
+                },
+                signal: offerRefreshController.signal,
+                credentials: 'same-origin',
+                cache: 'no-store',
+            }
+        )
+        if (!response.ok) {
+            if (response.status === 403 || response.status === 404)
+                refreshedOfferAccess.value = { id, permissions: {} }
+            throw new Error(
+                'Could not refresh this offer. The previous review is still displayed.'
+            )
+        }
+        const data = await response.json()
+        if (
+            offerDisposed ||
+            section.value !== 'offers' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        const record = data.props?.selectedOffer
+        refreshedOfferAccess.value = {
+            id,
+            permissions: data.props?.recordCapabilities?.offers?.[id] || {},
+        }
+        if (
+            data.props?.selectedOfferStatus !== 'available' ||
+            !record ||
+            record.id !== id
+        ) {
+            refreshedOfferAccess.value = { id, permissions: {} }
+            throw new Error(
+                'This offer is unavailable or no longer accessible. No decision can be submitted from this review.'
+            )
+        }
+        detailRecord.value = record
+        selectedOfferVisibility.value =
+            data.props.offerVisibility === 'full' ? 'full' : 'supplier'
+        pendingOperation.value = ''
+        pendingQuote.value = null
+        formError.value = ''
+    } catch (error) {
+        if (
+            offerDisposed ||
+            section.value !== 'offers' ||
+            detailKind.value !== 'offers' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        formError.value =
+            error instanceof Error
+                ? error.message
+                : 'Could not refresh this offer. The previous review is still displayed.'
+    } finally {
+        busy.value = false
+    }
+}
+onBeforeUnmount(() => {
+    offerDisposed = true
+    offerRefreshController?.abort()
+    if (offerSearchTimer) clearTimeout(offerSearchTimer)
+})
+const rfqFilters = reactive({
+    q: props.rfqPage?.filters.q || '',
+    status: props.rfqPage?.filters.status || '',
+    sort: props.rfqPage?.filters.sort || 'newest',
+    per_page: props.rfqPage?.per_page || 25,
+})
+const rfqListLoading = ref(false)
+const rfqListError = ref('')
+const rfqReturnUrl = ref('')
+let rfqSearchTimer: ReturnType<typeof setTimeout> | undefined
+let rfqQueuedSearch = false
+let rfqSubmittedFilters = ''
+let rfqDisposed = false
+let rfqRefreshController: AbortController | undefined
+const rfqSignature = () => JSON.stringify(rfqFilters)
+const rfqFiltersPending = computed(() =>
+    props.rfqPage
+        ? rfqFilters.q !== props.rfqPage.filters.q ||
+          rfqFilters.status !== props.rfqPage.filters.status ||
+          rfqFilters.sort !== props.rfqPage.filters.sort ||
+          rfqFilters.per_page !== props.rfqPage.per_page
+        : false
+)
+const rfqColumns = computed(() => [
+    {
+        key: 'created_at',
+        label: 'Request / received',
+        sortable: true,
+        width: 260,
+        minWidth: 180,
+    },
+    { key: 'buyer', label: 'Buyer', width: 180, minWidth: 140 },
+    { key: 'quantity', label: 'Quantity / target', width: 160, minWidth: 130 },
+    { key: 'destination', label: 'Destination', width: 150, minWidth: 120 },
+    { key: 'status', label: 'Status', width: 130, minWidth: 100 },
+    { key: 'actions', label: 'Actions', width: 100, minWidth: 90 },
+])
+function rfqListUrl(
+    pageNumber = props.rfqPage?.page || 1,
+    filters = props.rfqPage?.filters || rfqFilters,
+    perPage = props.rfqPage?.per_page || rfqFilters.per_page
+) {
+    const query = new URLSearchParams({
+        section: 'rfqs',
+        sort: filters.sort || 'newest',
+        page: String(pageNumber),
+        per_page: String(perPage),
+    })
+    if (filters.q) query.set('q', filters.q)
+    if (filters.status) query.set('status', filters.status)
+    return '/dashboard?' + query.toString()
+}
+watch(
+    () => props.rfqPage,
+    (value) => {
+        if (
+            value &&
+            (!rfqListLoading.value || rfqSignature() === rfqSubmittedFilters)
+        )
+            Object.assign(rfqFilters, value.filters, {
+                per_page: value.per_page,
+            })
+    },
+    { deep: true, flush: 'sync' }
+)
+function visitRfqList(url: string) {
+    if (
+        rfqDisposed ||
+        section.value !== 'rfqs' ||
+        busy.value ||
+        detailRecord.value ||
+        quoteTarget.value
+    )
+        return
+    if (rfqListLoading.value) {
+        rfqQueuedSearch = true
+        return
+    }
+    if (rfqSearchTimer) clearTimeout(rfqSearchTimer)
+    rfqQueuedSearch = false
+    rfqSubmittedFilters = rfqSignature()
+    rfqListLoading.value = true
+    rfqListError.value = ''
+    router.get(
+        url,
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            onError: () => {
+                rfqListError.value =
+                    'Requests could not be loaded. Previous results are still shown.'
+            },
+            onNetworkError: () => {
+                rfqListError.value =
+                    'Connection lost. Previous request results are still shown. Try again.'
+                return false
+            },
+            onHttpException: () => {
+                rfqListError.value =
+                    'Requests could not be loaded. Previous results are still shown.'
+                return false
+            },
+            onFinish: () => {
+                rfqListLoading.value = false
+                if (rfqQueuedSearch) {
+                    rfqQueuedSearch = false
+                    void nextTick(applyRfqFilters)
+                }
+            },
+        }
+    )
+}
+function applyRfqFilters() {
+    visitRfqList(rfqListUrl(1, rfqFilters, rfqFilters.per_page))
+}
+watch(
+    () => rfqFilters.q,
+    (value) => {
+        if (rfqSearchTimer) clearTimeout(rfqSearchTimer)
+        if (section.value !== 'rfqs' || !props.rfqPage) return
+        if (rfqListLoading.value) {
+            if (rfqSignature() === rfqSubmittedFilters) return
+            rfqQueuedSearch = true
+        } else if (value === props.rfqPage.filters.q) return
+        rfqSearchTimer = setTimeout(applyRfqFilters, value ? 350 : 0)
+    }
+)
+function resetRfqFilters() {
+    if (busy.value || detailRecord.value || quoteTarget.value) return
+    if (rfqSearchTimer) clearTimeout(rfqSearchTimer)
+    Object.assign(rfqFilters, {
+        q: '',
+        status: '',
+        sort: 'newest',
+        per_page: 25,
+    })
+    applyRfqFilters()
+}
+function changeRfqPage(number: number) {
+    if (
+        !props.rfqPage ||
+        rfqFiltersPending.value ||
+        number < 1 ||
+        number > props.rfqPage.last_page
+    )
+        return
+    visitRfqList(rfqListUrl(number))
+}
+function changeRfqPageSize(number: number) {
+    if (
+        ![25, 50, 100].includes(number) ||
+        busy.value ||
+        detailRecord.value ||
+        quoteTarget.value
+    )
+        return
+    rfqFilters.per_page = number
+    applyRfqFilters()
+}
+function sortRfqColumn(sort: { key: string; direction: 'asc' | 'desc' }) {
+    if (
+        sort.key !== 'created_at' ||
+        busy.value ||
+        detailRecord.value ||
+        quoteTarget.value
+    )
+        return
+    rfqFilters.sort = sort.direction === 'asc' ? 'oldest' : 'newest'
+    applyRfqFilters()
+}
+async function refreshSelectedRfq() {
+    if (busy.value || !detailRecord.value || detailKind.value !== 'rfqs') return
+    const id = detailRecord.value.id
+    busy.value = true
+    rfqRefreshController = new AbortController()
+    try {
+        const response = await fetch(
+            rfqListUrl() + '&selected_rfq=' + encodeURIComponent(id),
+            {
+                headers: {
+                    'X-Inertia': 'true',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Accept: 'application/json',
+                },
+                signal: rfqRefreshController.signal,
+                credentials: 'same-origin',
+                cache: 'no-store',
+            }
+        )
+        if (!response.ok) {
+            if (response.status === 403 || response.status === 404)
+                refreshedRfqAccess.value = { id, permissions: {}, quotes: {} }
+            throw new Error(
+                'Could not refresh this request. The previous review is still displayed.'
+            )
+        }
+        const data = await response.json()
+        if (
+            rfqDisposed ||
+            section.value !== 'rfqs' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        const record = data.props?.selectedRfq
+        refreshedRfqAccess.value = {
+            id,
+            permissions: data.props?.recordCapabilities?.rfqs?.[id] || {},
+            quotes: data.props?.recordCapabilities?.quotes || {},
+        }
+        if (
+            data.props?.selectedRfqStatus !== 'available' ||
+            !record ||
+            record.id !== id
+        ) {
+            refreshedRfqAccess.value = { id, permissions: {}, quotes: {} }
+            throw new Error(
+                'This request is unavailable or no longer accessible. No request decision can be submitted from this review.'
+            )
+        }
+        detailRecord.value = record
+        selectedRfqVisibility.value =
+            data.props.rfqVisibility === 'full' ? 'full' : 'supplier'
+        pendingOperation.value = ''
+        pendingQuote.value = null
+        formError.value = ''
+    } catch (error) {
+        if (
+            rfqDisposed ||
+            section.value !== 'rfqs' ||
+            detailKind.value !== 'rfqs' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        formError.value =
+            error instanceof Error
+                ? error.message
+                : 'Could not refresh this request. The previous review is still displayed.'
+    } finally {
+        busy.value = false
+    }
+}
+onBeforeUnmount(() => {
+    rfqDisposed = true
+    rfqRefreshController?.abort()
+    if (rfqSearchTimer) clearTimeout(rfqSearchTimer)
+})
 const productFilters = reactive({
     q: props.productPage?.filters.q || '',
     category: props.productPage?.filters.category || '',
@@ -2784,6 +4001,12 @@ const statusOptions = computed(() =>
 const pageError = ref('')
 const localNotice = ref('')
 watch(section, (next, previous) => {
+    if (previous === 'rfqs' && next !== 'rfqs') {
+        rfqRefreshController?.abort()
+        if (quoteTarget.value && quoteDirty.value)
+            pendingQuoteDraft.value = captureQuoteDraft()
+        quoteTarget.value = null
+    }
     if (
         previous === 'orders' &&
         next !== 'orders' &&
@@ -2796,6 +4019,38 @@ watch(section, (next, previous) => {
     }
     if (orderSearchTimer) clearTimeout(orderSearchTimer)
     orderQueuedSearch = false
+    if (
+        previous === 'users' &&
+        next !== 'users' &&
+        detailKind.value === 'users'
+    ) {
+        userRefreshController?.abort()
+        detailRecord.value = null
+        pendingOperation.value = ''
+        pendingQuote.value = null
+    }
+    if (userSearchTimer) clearTimeout(userSearchTimer)
+    userQueuedSearch = false
+    if (
+        previous === 'offers' &&
+        next !== 'offers' &&
+        detailKind.value === 'offers'
+    ) {
+        offerRefreshController?.abort()
+        detailRecord.value = null
+        pendingOperation.value = ''
+        pendingQuote.value = null
+    }
+    if (offerSearchTimer) clearTimeout(offerSearchTimer)
+    offerQueuedSearch = false
+    if (previous === 'rfqs' && next !== 'rfqs' && detailKind.value === 'rfqs') {
+        rfqRefreshController?.abort()
+        detailRecord.value = null
+        pendingOperation.value = ''
+        pendingQuote.value = null
+    }
+    if (rfqSearchTimer) clearTimeout(rfqSearchTimer)
+    rfqQueuedSearch = false
     search.value = ''
     recordStatus.value = 'all'
     accountRole.value = 'all'
@@ -2817,6 +4072,9 @@ const records = computed<RecordData[]>(
         })[section.value] || []
 )
 const visibleRecords = computed(() => {
+    if (section.value === 'rfqs' && props.rfqPage) return rfqList.value
+    if (section.value === 'offers' && props.offerPage) return offerList.value
+    if (section.value === 'users' && props.userPage) return props.users || []
     if (section.value === 'orders' && props.orderPage) return orderList.value
     if (section.value === 'products' && props.productPage)
         return productList.value
@@ -3395,12 +4653,136 @@ const quoteSnapshot = ref(JSON.stringify(quoteForm))
 const quoteDirty = computed(
     () => JSON.stringify(quoteForm) !== quoteSnapshot.value
 )
+const quoteDraftKey = `soko.quote-editor.${props.currentUser.id}`
+type QuoteDraft = {
+    rfqId: string
+    form: { unit_price: number; lead_time_days: number; notes: string }
+}
+const pendingQuoteDraft = ref<QuoteDraft | null>(null)
+const quoteDiscardPending = ref(false)
+const quoteRecoveryError = ref('')
+const restoredQuoteDraft = router.restore(quoteDraftKey) as
+    QuoteDraft | undefined
+if (restoredQuoteDraft?.rfqId && restoredQuoteDraft.form)
+    pendingQuoteDraft.value = restoredQuoteDraft
+function captureQuoteDraft(): QuoteDraft {
+    return {
+        rfqId: String(quoteTarget.value?.id || ''),
+        form: {
+            unit_price: quoteForm.unit_price,
+            lead_time_days: quoteForm.lead_time_days,
+            notes: quoteForm.notes,
+        },
+    }
+}
+watch(
+    [quoteForm, quoteTarget, pendingQuoteDraft],
+    () => {
+        router.remember(
+            quoteTarget.value && quoteDirty.value
+                ? captureQuoteDraft()
+                : pendingQuoteDraft.value,
+            quoteDraftKey
+        )
+    },
+    { deep: true }
+)
+function discardQuoteDraft() {
+    if (busy.value) return
+    pendingQuoteDraft.value = null
+    quoteDiscardPending.value = false
+    quoteRecoveryError.value = ''
+    router.remember(null, quoteDraftKey)
+}
+async function recoverQuoteDraft() {
+    if (
+        busy.value ||
+        rfqListLoading.value ||
+        quoteTarget.value ||
+        detailRecord.value ||
+        !pendingQuoteDraft.value
+    )
+        return
+    const draft = pendingQuoteDraft.value
+    busy.value = true
+    quoteRecoveryError.value = ''
+    rfqRefreshController = new AbortController()
+    try {
+        const response = await fetch(
+            rfqListUrl() + '&selected_rfq=' + encodeURIComponent(draft.rfqId),
+            {
+                headers: {
+                    'X-Inertia': 'true',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Accept: 'application/json',
+                },
+                credentials: 'same-origin',
+                cache: 'no-store',
+                signal: rfqRefreshController.signal,
+            }
+        )
+        if (!response.ok)
+            throw new Error(
+                'Could not reopen the quotation. Your draft is still saved.'
+            )
+        const data = await response.json()
+        if (
+            rfqDisposed ||
+            section.value !== 'rfqs' ||
+            pendingQuoteDraft.value?.rfqId !== draft.rfqId
+        )
+            return
+        const record = data.props?.selectedRfq,
+            permissions =
+                data.props?.recordCapabilities?.rfqs?.[draft.rfqId] || {}
+        if (
+            data.props?.selectedRfqStatus !== 'available' ||
+            record?.id !== draft.rfqId ||
+            !permissions.quote
+        )
+            throw new Error(
+                'This request is unavailable or no longer accepts your quotations. Your draft is still saved.'
+            )
+        refreshedRfqAccess.value = {
+            id: record.id,
+            permissions,
+            quotes: data.props?.recordCapabilities?.quotes || {},
+        }
+        quoteTarget.value = record
+        Object.assign(quoteForm, {
+            unit_price: draft.form.unit_price ?? 0,
+            lead_time_days: draft.form.lead_time_days ?? 7,
+            notes: String(draft.form.notes || ''),
+        })
+        quoteSnapshot.value = ''
+        rfqReturnUrl.value = rfqListUrl()
+        pendingQuoteDraft.value = null
+        quoteDiscardPending.value = false
+        formError.value = ''
+        invalidFields.value = []
+    } catch (error) {
+        if (!rfqDisposed && section.value === 'rfqs')
+            quoteRecoveryError.value =
+                error instanceof Error
+                    ? error.message
+                    : 'Could not reopen the quotation.'
+    } finally {
+        busy.value = false
+    }
+}
 const ownQuote = (rfq: RecordData) =>
     (rfq.quotes || []).find(
         (quote: RecordData) => quote.vendor_id === props.currentUser.id
     )
 const openQuote = (rfq: RecordData) => {
-    if (busy.value || !recordCan('rfqs', rfq.id, 'quote')) return
+    if (
+        busy.value ||
+        rfqListLoading.value ||
+        quoteTarget.value ||
+        !recordCan('rfqs', rfq.id, 'quote')
+    )
+        return
+    rfqReturnUrl.value = rfqListUrl()
     quoteTarget.value = rfq
     const quote = ownQuote(rfq)
     Object.assign(quoteForm, {
@@ -3413,10 +4795,21 @@ const openQuote = (rfq: RecordData) => {
     invalidFields.value = []
 }
 const closeQuote = () => {
-    if (!busy.value) quoteTarget.value = null
+    if (!busy.value) {
+        quoteTarget.value = null
+        pendingQuoteDraft.value = null
+        router.remember(null, quoteDraftKey)
+    }
 }
 const saveQuote = (event: Event) => {
-    if (busy.value || !quoteTarget.value || !validate(event)) return
+    if (
+        busy.value ||
+        !quoteTarget.value ||
+        !recordCan('rfqs', quoteTarget.value.id, 'quote') ||
+        !validate(event)
+    )
+        return
+    const returnUrl = rfqReturnUrl.value
     mutate(
         '/dashboard/rfqs/quote?section=rfqs',
         { rfq_id: quoteTarget.value.id, ...quoteForm },
@@ -3424,12 +4817,21 @@ const saveQuote = (event: Event) => {
         () => {
             quoteTarget.value = null
             localNotice.value = 'Quotation sent.'
+            if (returnUrl)
+                void nextTick(() =>
+                    router.get(
+                        returnUrl,
+                        {},
+                        { preserveState: true, preserveScroll: true }
+                    )
+                )
         },
         true
     )
 }
 const decideOffer = (offer: RecordData, status: 'accepted' | 'declined') => {
     if (busy.value || !recordCan('offers', offer.id, 'decide')) return
+    const returnUrl = offerReturnUrl.value || offerListUrl()
     mutate(
         `/dashboard/offers/${offer.id}/decision?section=offers`,
         { status },
@@ -3439,6 +4841,13 @@ const decideOffer = (offer: RecordData, status: 'accepted' | 'declined') => {
                 status === 'accepted' ? 'Offer accepted.' : 'Offer declined.'
             detailRecord.value = null
             pendingOperation.value = ''
+            void nextTick(() =>
+                router.get(
+                    returnUrl,
+                    {},
+                    { preserveState: true, preserveScroll: true }
+                )
+            )
         },
         true
     )
