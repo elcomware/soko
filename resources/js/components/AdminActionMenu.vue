@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import SokoIcon from './SokoIcon.vue'
 const props = defineProps<{
     label: string
-    items: { id: string; label: string; disabled?: boolean; danger?: boolean }[]
+    items: {
+        id: string
+        label: string
+        disabled?: boolean
+        danger?: boolean
+        icon?: string
+    }[]
     disabled?: boolean
 }>()
 const emit = defineEmits<{ select: [id: string] }>()
@@ -186,7 +193,11 @@ onBeforeUnmount(() => close())
                 :class="{ 'is-danger': item.danger }"
                 @click="select(item.id)"
             >
-                {{ item.label }}
+                <SokoIcon
+                    v-if="item.icon"
+                    :name="item.icon"
+                    :size="16"
+                /><span>{{ item.label }}</span>
             </button>
         </div>
     </span>
@@ -238,7 +249,9 @@ onBeforeUnmount(() => close())
     box-shadow: 0 8px 24px color-mix(in srgb, var(--soko-ink) 16%, transparent);
 }
 .admin-action-popup button {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     width: 100%;
     border: 0;
     border-radius: var(--soko-radius);

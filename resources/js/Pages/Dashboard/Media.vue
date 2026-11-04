@@ -2,11 +2,10 @@
     <section class="workspace-panel media-workspace">
         <header class="workspace-panel-heading media-page-header">
             <div>
-                <p class="eyebrow">Catalog assets</p>
-                <h1>Product media</h1>
+                <h1>Media</h1>
                 <p class="form-note">
-                    Prepare product photos and branded mockups in one place.
-                    Your unpublished images remain private to your account.
+                    Upload photos and create mockups. Unpublished images stay
+                    private.
                 </p>
             </div>
         </header>

@@ -50,6 +50,10 @@ func (d *DashboardController) Index(ctx http.Context) http.Response {
 
 	var data *services.WorkspaceData
 	var recordCapabilities map[string]map[string]map[string]bool
+	var orderPage *services.WorkspaceOrderPageMeta
+	var selectedOrder *models.Order
+	selectedOrderStatus := "none"
+	orderVisibility := "none"
 	var productPage *services.WorkspaceProductPageMeta
 	productCategories := []string{}
 	var selectedProduct *models.Product
@@ -76,6 +80,28 @@ func (d *DashboardController) Index(ctx http.Context) http.Response {
 		productCategories = result.ProductCategories
 		selectedProduct = result.SelectedProduct
 		selectedProductStatus = result.SelectedProductStatus
+	} else if ctx.Request().Query("section", "") == "orders" {
+		if !u.HasPermission("orders.read") {
+			return ctx.Response().String(http.StatusForbidden, "Order access is not permitted.")
+		}
+		input := map[string]string{}
+		for _, key := range []string{"q", "status", "sort", "page", "per_page", "selected_order"} {
+			input[key] = ctx.Request().Query(key, "")
+		}
+		filters, err := services.ParseWorkspaceOrderFilters(input)
+		if err != nil {
+			return ctx.Response().String(http.StatusBadRequest, "Invalid order filters: "+err.Error())
+		}
+		result, err := services.LoadWorkspaceOrders(u, filters)
+		if err != nil {
+			return ctx.Response().String(http.StatusInternalServerError, "Your order workspace could not be loaded. Please try again.")
+		}
+		data = &services.WorkspaceData{Products: []models.Product{}, Orders: result.Orders, Offers: []models.Offer{}, Rfqs: []models.Rfq{}, Users: []models.User{}, Stats: map[string]any{"total_orders": result.OrderPage.Total}}
+		recordCapabilities = result.RecordCapabilities
+		orderPage = &result.OrderPage
+		selectedOrder = result.SelectedOrder
+		selectedOrderStatus = result.SelectedOrderStatus
+		orderVisibility = result.OrderVisibility
 	} else {
 		var err error
 		data, err = services.LoadWorkspace(u, false)
@@ -87,7 +113,7 @@ func (d *DashboardController) Index(ctx http.Context) http.Response {
 			return ctx.Response().String(http.StatusInternalServerError, "Your workspace could not be loaded. Please try again.")
 		}
 	}
-	return inertiafacades.Inertia().Render(ctx, "Dashboard/Index", map[string]any{"productPage": productPage, "productCategories": productCategories, "selectedProduct": selectedProduct, "selectedProductStatus": selectedProductStatus, "recordCapabilities": recordCapabilities, "currentUser": u, "stats": data.Stats, "products": data.Products, "orders": data.Orders, "users": data.Users, "rfqs": data.Rfqs, "offers": data.Offers, "currencies": d.currencyService.GetCurrencies(), "regions": d.currencyService.GetRegions(), "capabilities": map[string]bool{"manageCatalog": u.CanManageCatalog(), "createProducts": u.HasPermission("products.create"), "createMedia": u.HasPermission("media.create"), "editProducts": u.HasPermission("products.update"), "deleteProducts": u.HasPermission("products.delete"), "managePromotions": u.HasPermission("promotions.manage"), "manageUsers": u.Can("users.read", ""), "manageContent": u.HasPermission("content.update"), "reviewOffers": u.HasPermission("offers.decide"), "quoteRfqs": u.HasPermission("rfqs.quote"), "readProducts": u.HasPermission("products.read"), "readOrders": u.HasPermission("orders.read"), "readOffers": u.HasPermission("offers.read"), "readRfqs": u.HasPermission("rfqs.read") || u.HasPermission("rfqs.quote"), "manageSettings": u.HasPermission("brand.update") || u.HasPermission("permissions.manage") || u.HasPermission("payments.configure")}, "storefrontContent": queries.LoadStorefrontContent()})
+	return inertiafacades.Inertia().Render(ctx, "Dashboard/Index", map[string]any{"orderPage": orderPage, "selectedOrder": selectedOrder, "selectedOrderStatus": selectedOrderStatus, "orderVisibility": orderVisibility, "productPage": productPage, "productCategories": productCategories, "selectedProduct": selectedProduct, "selectedProductStatus": selectedProductStatus, "recordCapabilities": recordCapabilities, "currentUser": u, "stats": data.Stats, "products": data.Products, "orders": data.Orders, "users": data.Users, "rfqs": data.Rfqs, "offers": data.Offers, "currencies": d.currencyService.GetCurrencies(), "regions": d.currencyService.GetRegions(), "capabilities": map[string]bool{"manageCatalog": u.CanManageCatalog(), "createProducts": u.HasPermission("products.create"), "createMedia": u.HasPermission("media.create"), "editProducts": u.HasPermission("products.update"), "deleteProducts": u.HasPermission("products.delete"), "managePromotions": u.HasPermission("promotions.manage"), "manageUsers": u.Can("users.read", ""), "manageContent": u.HasPermission("content.update"), "reviewOffers": u.HasPermission("offers.decide"), "quoteRfqs": u.HasPermission("rfqs.quote"), "readProducts": u.HasPermission("products.read"), "readOrders": u.HasPermission("orders.read"), "readOffers": u.HasPermission("offers.read"), "readRfqs": u.HasPermission("rfqs.read") || u.HasPermission("rfqs.quote"), "manageSettings": u.HasPermission("brand.update") || u.HasPermission("permissions.manage") || u.HasPermission("payments.configure")}, "storefrontContent": queries.LoadStorefrontContent()})
 }
 
 func (d *DashboardController) CreateProduct(ctx http.Context) http.Response {

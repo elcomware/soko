@@ -246,7 +246,10 @@
                         {{ productListError }}
                     </p>
                 </form>
-                <div v-else class="workspace-toolbar">
+                <div
+                    v-else-if="!(section === 'orders' && orderPage)"
+                    class="workspace-toolbar"
+                >
                     <label class="workspace-search"
                         ><SokoIcon name="search" /><span class="sr-only"
                             >Search
@@ -370,7 +373,10 @@
                     </p>
                 </div>
                 <div
-                    v-if="!visibleRecords.length"
+                    v-if="
+                        !visibleRecords.length &&
+                        !(section === 'orders' && orderPage)
+                    "
                     class="workspace-panel workspace-empty"
                 >
                     <SokoIcon :name="activeNavigation.icon" />
@@ -530,22 +536,119 @@
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'orders'"
-                    caption="Orders · authorized lines only"
+                    :caption="
+                        orderVisibility === 'full'
+                            ? 'Orders'
+                            : 'Orders · authorized supplier lines'
+                    "
                     class="workspace-admin-list"
+                    :columns="orderColumns"
+                    :sort="{
+                        key: 'created_at',
+                        direction:
+                            orderFilters.sort === 'oldest' ? 'asc' : 'desc',
+                    }"
+                    resizable-columns
+                    :viewport-height="520"
+                    resizable-height
+                    :empty="!visibleRecords.length"
+                    :empty-text="
+                        hasActiveFilters
+                            ? 'No orders match these filters. Change or reset the filters to continue.'
+                            : 'No orders are available in your authorized scope.'
+                    "
+                    :busy="busy || orderListLoading"
+                    @sort="sortOrderColumn"
                 >
-                    <template #header
-                        ><tr>
-                            <th scope="col">Order</th>
-                            <th scope="col">Buyer</th>
-                            <th scope="col">Visible lines</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Visible total</th>
-                            <th scope="col">Actions</th>
-                        </tr></template
+                    <template v-if="orderPage" #toolbar
+                        ><form
+                            class="order-search-toolbar"
+                            @submit.prevent="applyOrderFilters"
+                        >
+                            <label
+                                >Search orders<input
+                                    v-model="orderFilters.q"
+                                    type="search"
+                                    maxlength="120"
+                                    placeholder="Order reference, buyer or status"
+                                    :disabled="busy" /></label
+                            ><button
+                                type="submit"
+                                class="button button-outline"
+                                :disabled="busy"
+                            >
+                                Search</button
+                            ><button
+                                v-if="
+                                    orderFilters.q ||
+                                    orderFilters.status ||
+                                    orderFilters.sort !== 'newest'
+                                "
+                                type="button"
+                                class="button button-outline"
+                                :disabled="busy"
+                                @click="resetOrderFilters"
+                            >
+                                Reset filters
+                            </button>
+                            <p role="status">
+                                {{ orderListLoading ? 'Updating… ' : ''
+                                }}{{ orderPage.filtered_total }} matching ·
+                                {{ orderPage.total }} authorized orders
+                            </p>
+                            <p
+                                v-if="orderListError"
+                                role="alert"
+                                class="form-error"
+                            >
+                                {{ orderListError }}
+                            </p>
+                        </form></template
+                    >
+                    <template v-if="orderPage" #filters
+                        ><div class="order-filter-fields">
+                            <label
+                                >Status<select
+                                    v-model="orderFilters.status"
+                                    :disabled="busy"
+                                    @change="applyOrderFilters"
+                                >
+                                    <option value="">All statuses</option>
+                                    <option
+                                        v-for="status in [
+                                            'pending',
+                                            'cancelled',
+                                            'completed',
+                                            'shipped',
+                                        ]"
+                                        :key="status"
+                                        :value="status"
+                                    >
+                                        {{ humanize(status) }}
+                                    </option>
+                                </select></label
+                            ><label
+                                >Received<select
+                                    v-model="orderFilters.sort"
+                                    :disabled="busy"
+                                    @change="applyOrderFilters"
+                                >
+                                    <option value="newest">Newest first</option>
+                                    <option value="oldest">Oldest first</option>
+                                </select></label
+                            >
+                        </div></template
                     >
                     <tr v-for="order in visibleRecords" :key="order.id">
                         <th scope="row">
-                            <strong>{{ order.order_number }}</strong
+                            <button
+                                type="button"
+                                class="operation-identity"
+                                :disabled="busy || orderListLoading"
+                                :aria-label="`View order ${order.order_number}`"
+                                @click="openRecord('orders', order)"
+                            >
+                                {{ order.order_number }}</button
                             ><small>{{ dateLabel(order.created_at) }}</small>
                         </th>
                         <td>{{ order.customer_name || 'Buyer' }}</td>
@@ -562,13 +665,27 @@
                             <AdminActionMenu
                                 :label="`Actions for order ${order.order_number}`"
                                 :items="operationActions('orders', order)"
-                                :disabled="busy"
+                                :disabled="busy || orderListLoading"
                                 @select="
                                     (id) => openRecord('orders', order, id)
                                 "
                             />
                         </td>
                     </tr>
+                    <template v-if="orderPage" #footer
+                        ><AdminPagination
+                            :page="orderPage.page"
+                            :per-page="orderPage.per_page"
+                            :total="orderPage.filtered_total"
+                            :last-page="orderPage.last_page"
+                            :from="orderPage.from"
+                            :to="orderPage.to"
+                            :busy="
+                                busy || orderListLoading || orderFiltersPending
+                            "
+                            @page="changeOrderPage"
+                            @per-page="changeOrderPageSize"
+                    /></template>
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'rfqs'"
@@ -771,10 +888,21 @@
                 </div>
                 <template v-if="detailKind === 'orders'">
                     <p class="operation-scope-note">
-                        This view contains the order lines you are authorized to
-                        see. The visible total may represent only your portion
-                        of an order.
+                        {{
+                            selectedOrderVisibility === 'full'
+                                ? 'All order lines are shown.'
+                                : 'Only your authorized supplier lines and their subtotal are shown.'
+                        }}
                     </p>
+                    <button
+                        v-if="orderPage"
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy"
+                        @click="refreshSelectedOrder"
+                    >
+                        Refresh order details
+                    </button>
                     <dl class="operation-facts">
                         <div>
                             <dt>Buyer</dt>
@@ -799,13 +927,25 @@
                             </dd>
                         </div>
                         <div>
-                            <dt>Visible total</dt>
+                            <dt>
+                                {{
+                                    selectedOrderVisibility === 'full'
+                                        ? 'Order total'
+                                        : 'Visible subtotal'
+                                }}
+                            </dt>
                             <dd>
                                 {{ formatPrice(detailRecord.total_amount) }}
                             </dd>
                         </div>
                     </dl>
-                    <h3>Visible order lines</h3>
+                    <h3>
+                        {{
+                            selectedOrderVisibility === 'full'
+                                ? 'Order lines'
+                                : 'Visible order lines'
+                        }}
+                    </h3>
                     <ul class="operation-lines">
                         <li
                             v-for="item in detailRecord.items || []"
@@ -1016,7 +1156,16 @@
                         ><button
                             type="button"
                             class="button button-navy"
-                            :disabled="busy"
+                            :disabled="
+                                busy ||
+                                (detailKind === 'orders' &&
+                                    pendingOperation === 'cancel' &&
+                                    !recordCan(
+                                        'orders',
+                                        detailRecord.id,
+                                        'cancel'
+                                    ))
+                            "
                             @click="confirmOperation"
                         >
                             {{
@@ -1711,6 +1860,7 @@ import { Link, router, usePage } from '@inertiajs/vue3'
 import SokoDialog from '@/components/SokoDialog.vue'
 import AdminDrawer from '@/components/AdminDrawer.vue'
 import AdminTable from '@/components/AdminTable.vue'
+import AdminPagination from '@/components/AdminPagination.vue'
 import AdminActionMenu from '@/components/AdminActionMenu.vue'
 import SokoIcon from '@/components/SokoIcon.vue'
 import ProductMediaStudio from '@/components/ProductMediaStudio.vue'
@@ -1741,6 +1891,19 @@ const props = defineProps<{
     selectedProduct?: RecordData | null
     selectedProductStatus?: 'none' | 'available' | 'unavailable'
     orders?: RecordData[] | null
+    orderPage?: {
+        page: number
+        per_page: number
+        total: number
+        filtered_total: number
+        last_page: number
+        from: number
+        to: number
+        filters: { q: string; status: string; sort: string }
+    } | null
+    selectedOrder?: RecordData | null
+    selectedOrderStatus?: 'none' | 'available' | 'unavailable'
+    orderVisibility?: 'full' | 'supplier' | 'none'
     users?: RecordData[] | null
     rfqs?: RecordData[] | null
     offers?: RecordData[] | null
@@ -1769,10 +1932,17 @@ const refreshedProductAccess = ref<{
     id: string
     permissions: Record<string, boolean>
 } | null>(null)
+const refreshedOrderAccess = ref<{
+    id: string
+    permissions: Record<string, boolean>
+} | null>(null)
+const selectedOrderVisibility = ref<'full' | 'supplier'>('supplier')
 const recordCan = (kind: string, id: string, action: string) =>
-    kind === 'products' && refreshedProductAccess.value?.id === id
-        ? refreshedProductAccess.value.permissions[action] === true
-        : props.recordCapabilities?.[kind]?.[id]?.[action] === true
+    kind === 'orders' && refreshedOrderAccess.value?.id === id
+        ? refreshedOrderAccess.value.permissions[action] === true
+        : kind === 'products' && refreshedProductAccess.value?.id === id
+          ? refreshedProductAccess.value.permissions[action] === true
+          : props.recordCapabilities?.[kind]?.[id]?.[action] === true
 const detailRecord = ref<RecordData | null>(null)
 const detailKind = ref('')
 const pendingOperation = ref('')
@@ -1792,24 +1962,57 @@ const accessSettingsHref = computed(
         )?.href || ''
 )
 const operationActions = (kind: string, record: RecordData) => [
-    { id: 'view', label: 'View details' },
+    { id: 'view', label: 'View details', icon: 'eye' },
     ...(kind === 'orders' && recordCan(kind, record.id, 'cancel')
-        ? [{ id: 'cancel', label: 'Review cancellation', danger: true }]
+        ? [
+              {
+                  id: 'cancel',
+                  label: 'Cancel order…',
+                  danger: true,
+                  icon: 'close',
+              },
+          ]
         : []),
     ...(kind === 'rfqs' && recordCan(kind, record.id, 'quote')
-        ? [{ id: 'quote', label: 'Prepare quotation' }]
+        ? [{ id: 'quote', label: 'Prepare quote…', icon: 'document' }]
         : []),
     ...(kind === 'rfqs' && recordCan(kind, record.id, 'close')
-        ? [{ id: 'close', label: 'Review closing request', danger: true }]
+        ? [
+              {
+                  id: 'close',
+                  label: 'Close request…',
+                  danger: true,
+                  icon: 'close',
+              },
+          ]
         : []),
     ...(kind === 'offers' && recordCan(kind, record.id, 'decide')
         ? [
-              { id: 'accepted', label: 'Review acceptance' },
-              { id: 'declined', label: 'Review decline', danger: true },
+              { id: 'accepted', label: 'Accept offer…', icon: 'check' },
+              {
+                  id: 'declined',
+                  label: 'Decline offer…',
+                  danger: true,
+                  icon: 'close',
+              },
           ]
         : []),
 ]
 function openRecord(kind: string, record: RecordData, action = 'view') {
+    if (kind === 'orders') {
+        if (busy.value || orderListLoading.value) return
+        if (orderSearchTimer) clearTimeout(orderSearchTimer)
+        orderQueuedSearch = false
+        if (
+            detailKind.value !== 'orders' ||
+            detailRecord.value?.id !== record.id
+        ) {
+            orderReturnUrl.value = orderListUrl()
+            selectedOrderVisibility.value =
+                props.orderVisibility === 'full' ? 'full' : 'supplier'
+            refreshedOrderAccess.value = null
+        }
+    }
     if (
         busy.value ||
         !operationActions(kind, record).some((item) => item.id === action)
@@ -1931,6 +2134,10 @@ function confirmOperation() {
     )
         url = `/dashboard/rfqs/${record.id}/quotes/${pendingQuote.value.id}/accept`
     if (!url) return
+    const returnOrderUrl =
+        detailKind.value === 'orders'
+            ? orderReturnUrl.value || orderListUrl()
+            : ''
     mutate(
         url,
         action === 'award'
@@ -1941,11 +2148,23 @@ function confirmOperation() {
             detailRecord.value = null
             pendingOperation.value = ''
             pendingQuote.value = null
+            if (returnOrderUrl)
+                void nextTick(() =>
+                    router.get(
+                        returnOrderUrl,
+                        {},
+                        { preserveState: true, preserveScroll: true }
+                    )
+                )
         },
         true
     )
 }
 function refreshRecord() {
+    if (detailKind.value === 'orders' && props.orderPage) {
+        void refreshSelectedOrder()
+        return
+    }
     if (busy.value || !detailRecord.value) return
     const kind = detailKind.value,
         id = detailRecord.value.id
@@ -2042,7 +2261,7 @@ const navigation = computed(() => [
                   id: 'orders',
                   label: 'Orders',
                   icon: 'document',
-                  count: orderList.value.length,
+                  count: props.orderPage?.total ?? orderList.value.length,
               },
           ]
         : []),
@@ -2095,15 +2314,262 @@ const activeNavigation = computed(
 )
 const descriptions: Record<string, string> = {
     overview: 'A clear view of your marketplace activity.',
-    products: 'Manage the details buyers need to choose your products.',
-    orders: 'Review purchases, ordered items and delivery information.',
-    rfqs: 'Discover what buyers need and prepare a quotation.',
-    offers: 'Review buyer proposals and keep negotiations moving.',
-    users: 'View registered marketplace accounts and verification status.',
+    products: 'Products, pricing and inventory.',
+    orders: 'Orders and fulfillment details.',
+    rfqs: 'Buyer requests and supplier quotes.',
+    offers: 'Buyer proposals for your listings.',
+    users: 'Read-only account directory.',
     content: 'Update the words buyers see in the marketplace.',
 }
 const sectionDescription = computed(() => descriptions[section.value])
 const sectionHref = (id: string) => `/dashboard?section=${id}`
+const orderFilters = reactive({
+    q: props.orderPage?.filters.q || '',
+    status: props.orderPage?.filters.status || '',
+    sort: props.orderPage?.filters.sort || 'newest',
+    per_page: props.orderPage?.per_page || 25,
+})
+const orderListLoading = ref(false)
+const orderListError = ref('')
+const orderReturnUrl = ref('')
+let orderSearchTimer: ReturnType<typeof setTimeout> | undefined
+let orderQueuedSearch = false
+let orderSubmittedFilters = ''
+let orderDisposed = false
+let orderRefreshController: AbortController | undefined
+const orderSignature = () => JSON.stringify(orderFilters)
+const orderFiltersPending = computed(() =>
+    props.orderPage
+        ? orderFilters.q !== props.orderPage.filters.q ||
+          orderFilters.status !== props.orderPage.filters.status ||
+          orderFilters.sort !== props.orderPage.filters.sort ||
+          orderFilters.per_page !== props.orderPage.per_page
+        : false
+)
+const orderColumns = computed(() => [
+    {
+        key: 'created_at',
+        label: 'Order / received',
+        sortable: true,
+        width: 240,
+        minWidth: 180,
+    },
+    { key: 'buyer', label: 'Buyer', width: 190, minWidth: 140 },
+    {
+        key: 'items',
+        label: props.orderVisibility === 'full' ? 'Lines' : 'Visible lines',
+        width: 110,
+        minWidth: 90,
+    },
+    { key: 'status', label: 'Status', width: 140, minWidth: 110 },
+    {
+        key: 'total',
+        label:
+            props.orderVisibility === 'full' ? 'Order total' : 'Visible total',
+        width: 150,
+        minWidth: 120,
+    },
+    { key: 'actions', label: 'Actions', width: 100, minWidth: 90 },
+])
+function orderListUrl(
+    pageNumber = props.orderPage?.page || 1,
+    filters = props.orderPage?.filters || orderFilters,
+    perPage = props.orderPage?.per_page || orderFilters.per_page
+) {
+    const query = new URLSearchParams({
+        section: 'orders',
+        sort: filters.sort || 'newest',
+        page: String(pageNumber),
+        per_page: String(perPage),
+    })
+    if (filters.q) query.set('q', filters.q)
+    if (filters.status) query.set('status', filters.status)
+    return '/dashboard?' + query.toString()
+}
+watch(
+    () => props.orderPage,
+    (value) => {
+        if (
+            value &&
+            (!orderListLoading.value ||
+                orderSignature() === orderSubmittedFilters)
+        )
+            Object.assign(orderFilters, value.filters, {
+                per_page: value.per_page,
+            })
+    },
+    { deep: true, flush: 'sync' }
+)
+function visitOrderList(url: string) {
+    if (
+        orderDisposed ||
+        section.value !== 'orders' ||
+        busy.value ||
+        detailRecord.value
+    )
+        return
+    if (orderListLoading.value) {
+        orderQueuedSearch = true
+        return
+    }
+    if (orderSearchTimer) clearTimeout(orderSearchTimer)
+    orderQueuedSearch = false
+    orderSubmittedFilters = orderSignature()
+    orderListLoading.value = true
+    orderListError.value = ''
+    router.get(
+        url,
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            onError: () => {
+                orderListError.value =
+                    'Orders could not be loaded. Previous results are still shown.'
+            },
+            onNetworkError: () => {
+                orderListError.value =
+                    'Connection lost. Previous order results are still shown. Try again.'
+                return false
+            },
+            onHttpException: () => {
+                orderListError.value =
+                    'Orders could not be loaded. Previous results are still shown.'
+                return false
+            },
+            onFinish: () => {
+                orderListLoading.value = false
+                if (orderQueuedSearch) {
+                    orderQueuedSearch = false
+                    void nextTick(applyOrderFilters)
+                }
+            },
+        }
+    )
+}
+function applyOrderFilters() {
+    visitOrderList(orderListUrl(1, orderFilters, orderFilters.per_page))
+}
+watch(
+    () => orderFilters.q,
+    (value) => {
+        if (orderSearchTimer) clearTimeout(orderSearchTimer)
+        if (section.value !== 'orders' || !props.orderPage) return
+        if (orderListLoading.value) {
+            if (orderSignature() === orderSubmittedFilters) return
+            orderQueuedSearch = true
+        } else if (value === props.orderPage.filters.q) return
+        orderSearchTimer = setTimeout(applyOrderFilters, value ? 350 : 0)
+    }
+)
+function resetOrderFilters() {
+    if (busy.value || detailRecord.value) return
+    if (orderSearchTimer) clearTimeout(orderSearchTimer)
+    Object.assign(orderFilters, {
+        q: '',
+        status: '',
+        sort: 'newest',
+        per_page: 25,
+    })
+    applyOrderFilters()
+}
+function changeOrderPage(number: number) {
+    if (
+        !props.orderPage ||
+        orderFiltersPending.value ||
+        number < 1 ||
+        number > props.orderPage.last_page
+    )
+        return
+    visitOrderList(orderListUrl(number))
+}
+function changeOrderPageSize(number: number) {
+    if (![25, 50, 100].includes(number) || busy.value || detailRecord.value)
+        return
+    orderFilters.per_page = number
+    applyOrderFilters()
+}
+function sortOrderColumn(sort: { key: string; direction: 'asc' | 'desc' }) {
+    if (sort.key !== 'created_at' || busy.value || detailRecord.value) return
+    orderFilters.sort = sort.direction === 'asc' ? 'oldest' : 'newest'
+    applyOrderFilters()
+}
+async function refreshSelectedOrder() {
+    if (busy.value || !detailRecord.value || detailKind.value !== 'orders')
+        return
+    const id = detailRecord.value.id
+    busy.value = true
+    orderRefreshController = new AbortController()
+    try {
+        const response = await fetch(
+            orderListUrl() + '&selected_order=' + encodeURIComponent(id),
+            {
+                headers: {
+                    'X-Inertia': 'true',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    Accept: 'application/json',
+                },
+                signal: orderRefreshController.signal,
+                credentials: 'same-origin',
+                cache: 'no-store',
+            }
+        )
+        if (!response.ok) {
+            if (response.status === 403 || response.status === 404)
+                refreshedOrderAccess.value = { id, permissions: {} }
+            throw new Error(
+                'Could not refresh this order. The previous review is still displayed.'
+            )
+        }
+        const data = await response.json()
+        if (
+            orderDisposed ||
+            section.value !== 'orders' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        const record = data.props?.selectedOrder
+        refreshedOrderAccess.value = {
+            id,
+            permissions: data.props?.recordCapabilities?.orders?.[id] || {},
+        }
+        if (
+            data.props?.selectedOrderStatus !== 'available' ||
+            !record ||
+            record.id !== id
+        ) {
+            refreshedOrderAccess.value = { id, permissions: {} }
+            throw new Error(
+                'This order is unavailable or no longer accessible. No cancellation can be submitted from this review.'
+            )
+        }
+        detailRecord.value = record
+        selectedOrderVisibility.value =
+            data.props.orderVisibility === 'full' ? 'full' : 'supplier'
+        pendingOperation.value = ''
+        pendingQuote.value = null
+        formError.value = ''
+    } catch (error) {
+        if (
+            orderDisposed ||
+            section.value !== 'orders' ||
+            detailKind.value !== 'orders' ||
+            detailRecord.value?.id !== id
+        )
+            return
+        formError.value =
+            error instanceof Error
+                ? error.message
+                : 'Could not refresh this order. The previous review is still displayed.'
+    } finally {
+        busy.value = false
+    }
+}
+onBeforeUnmount(() => {
+    orderDisposed = true
+    orderRefreshController?.abort()
+    if (orderSearchTimer) clearTimeout(orderSearchTimer)
+})
 const productFilters = reactive({
     q: props.productPage?.filters.q || '',
     category: props.productPage?.filters.category || '',
@@ -2274,21 +2740,28 @@ const accountRoles = computed(() =>
     ].sort()
 )
 const hasActiveFilters = computed(() =>
-    section.value === 'products' && props.productPage
-        ? Boolean(
-              props.productPage.filters.q || props.productPage.filters.category
-          )
-        : Boolean(search.value.trim()) ||
-          (section.value === 'users'
-              ? accountRole.value !== 'all' ||
-                accountVerification.value !== 'all'
-              : recordStatus.value !== 'all')
+    section.value === 'orders' && props.orderPage
+        ? Boolean(props.orderPage.filters.q || props.orderPage.filters.status)
+        : section.value === 'products' && props.productPage
+          ? Boolean(
+                props.productPage.filters.q ||
+                props.productPage.filters.category
+            )
+          : Boolean(search.value.trim()) ||
+            (section.value === 'users'
+                ? accountRole.value !== 'all' ||
+                  accountVerification.value !== 'all'
+                : recordStatus.value !== 'all')
 )
 function keepReviewing() {
     pendingOperation.value = ''
     pendingQuote.value = null
 }
 function clearRecordFilters() {
+    if (section.value === 'orders' && props.orderPage) {
+        resetOrderFilters()
+        return
+    }
     if (section.value === 'products' && props.productPage) {
         resetProductFilters()
         return
@@ -2310,7 +2783,19 @@ const statusOptions = computed(() =>
 )
 const pageError = ref('')
 const localNotice = ref('')
-watch(section, () => {
+watch(section, (next, previous) => {
+    if (
+        previous === 'orders' &&
+        next !== 'orders' &&
+        detailKind.value === 'orders'
+    ) {
+        orderRefreshController?.abort()
+        detailRecord.value = null
+        pendingOperation.value = ''
+        pendingQuote.value = null
+    }
+    if (orderSearchTimer) clearTimeout(orderSearchTimer)
+    orderQueuedSearch = false
     search.value = ''
     recordStatus.value = 'all'
     accountRole.value = 'all'
@@ -2332,6 +2817,7 @@ const records = computed<RecordData[]>(
         })[section.value] || []
 )
 const visibleRecords = computed(() => {
+    if (section.value === 'orders' && props.orderPage) return orderList.value
     if (section.value === 'products' && props.productPage)
         return productList.value
     const query = search.value.trim().toLowerCase()
@@ -3002,6 +3488,47 @@ const saveContent = (event: Event) => {
 </script>
 
 <style scoped>
+.order-search-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+    width: 100%;
+}
+.order-search-toolbar label {
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    flex: 1;
+    min-width: min(100%, 16rem);
+}
+.order-search-toolbar input,
+.order-filter-fields select {
+    min-height: 44px;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+    background: var(--soko-surface);
+    color: var(--soko-ink);
+}
+.order-search-toolbar p {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--soko-muted);
+}
+.order-filter-fields {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.order-filter-fields label {
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    flex: 1;
+    min-width: min(100%, 10rem);
+}
+
 .product-list-toolbar {
     display: flex;
     flex-wrap: wrap;

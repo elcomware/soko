@@ -154,6 +154,80 @@ const sublabel = (value: string) => {
     const s = JSON.parse(value)
     return `${s.category} / ${s.sub_category}`
 }
+type TargetKind = 'categories' | 'sub_categories' | 'product_ids'
+type TargetBucket = 'include' | 'exclude'
+type TargetKey =
+    | TargetKind
+    | 'exclude_categories'
+    | 'exclude_sub_categories'
+    | 'exclude_product_ids'
+const targetKinds: { key: TargetKind; label: string }[] = [
+    { key: 'categories', label: 'Categories' },
+    { key: 'sub_categories', label: 'Subcategories' },
+    { key: 'product_ids', label: 'Products' },
+]
+const targetPanels = computed(() =>
+    form.all
+        ? (['exclude'] as TargetBucket[])
+        : (['include', 'exclude'] as TargetBucket[])
+)
+const activeTargetKind = reactive<Record<TargetBucket, TargetKind>>({
+    include: 'categories',
+    exclude: 'categories',
+})
+const targetKey = (bucket: TargetBucket, kind: TargetKind): TargetKey =>
+    bucket === 'exclude' ? (`exclude_${kind}` as TargetKey) : kind
+function targetOptions(kind: TargetKind) {
+    if (kind === 'categories')
+        return categories.value.map((value) => {
+            const count = scopedProducts.value.filter(
+                (p) => p.category === value
+            ).length
+            return {
+                value,
+                label: value || 'Uncategorized',
+                context: `${count} ${count === 1 ? 'product' : 'products'}`,
+            }
+        })
+    if (kind === 'sub_categories')
+        return subcategories.value.map((value) => ({
+            value,
+            label: sublabel(value),
+            context: 'Category / subcategory',
+        }))
+    return scopedProducts.value.map((p) => ({
+        value: p.id,
+        label: p.title,
+        context: [p.category, p.sub_category, p.vendor_name]
+            .filter(Boolean)
+            .join(' / '),
+    }))
+}
+function filteredTargetOptions(kind: TargetKind) {
+    const query = targetSearch.value.trim().toLowerCase()
+    return targetOptions(kind).filter((option) =>
+        `${option.label} ${option.context}`.toLowerCase().includes(query)
+    )
+}
+function selectedTargets(bucket: TargetBucket) {
+    return targetKinds.flatMap((kind) => {
+        const key = targetKey(bucket, kind.key)
+        const options = targetOptions(kind.key)
+        return form[key].map((value) => ({
+            key,
+            value,
+            kind: kind.label,
+            label:
+                options.find((option) => option.value === value)?.label ||
+                (kind.key === 'sub_categories' ? sublabel(value) : value),
+            unavailable: !options.some((option) => option.value === value),
+        }))
+    })
+}
+function removeTarget(key: TargetKey, value: string) {
+    if (busy.value) return
+    form[key] = form[key].filter((item) => item !== value)
+}
 const localTime = (value: string) => {
     const d = new Date(value)
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
@@ -187,6 +261,11 @@ function edit(c: any) {
     })
     savedDraft.value = JSON.stringify(form)
     targetSearch.value = ''
+    for (const bucket of ['include', 'exclude'] as TargetBucket[]) {
+        activeTargetKind[bucket] =
+            targetKinds.find((kind) => form[targetKey(bucket, kind.key)].length)
+                ?.key || 'categories'
+    }
     editorOpen.value = true
 }
 function reset() {
@@ -195,6 +274,8 @@ function reset() {
 }
 function resetDraft() {
     Object.assign(form, freshCampaign())
+    activeTargetKind.include = 'categories'
+    activeTargetKind.exclude = 'categories'
     error.value = ''
     targetSearch.value = ''
     savedDraft.value = JSON.stringify(form)
@@ -523,133 +604,148 @@ function status(c: any) {
                     >
                     <h3 class="campaign-step">2. Product coverage</h3>
                     <label for="campaign-product-search"
-                        >Find products in selection lists</label
+                        >Search coverage choices</label
                     >
                     <input
                         id="campaign-product-search"
                         v-model="targetSearch"
                         type="search"
-                        placeholder="Search product names or categories"
+                        placeholder="Category, subcategory or product"
                     />
-                    <div v-if="!form.all" class="campaign-grid">
-                        <div>
-                            <label for="campaign-categories">Categories</label
-                            ><select
-                                id="campaign-categories"
-                                v-model="form.categories"
-                                multiple
-                                size="5"
+                    <section
+                        v-for="bucket in targetPanels"
+                        :key="bucket"
+                        class="target-picker"
+                        :aria-labelledby="`target-heading-${bucket}`"
+                    >
+                        <div class="target-heading">
+                            <h3 :id="`target-heading-${bucket}`">
+                                {{
+                                    bucket === 'include'
+                                        ? 'Include in campaign'
+                                        : 'Exceptions · keep regular price'
+                                }}
+                            </h3>
+                            <span role="status"
+                                >{{
+                                    selectedTargets(bucket).length
+                                }}
+                                selected</span
                             >
-                                <option
-                                    v-for="c in categories"
-                                    :key="c"
-                                    :value="c"
-                                >
-                                    {{ c }}
-                                </option>
-                            </select>
                         </div>
-                        <div>
-                            <label for="campaign-subcategories"
-                                >Subcategories</label
-                            ><select
-                                id="campaign-subcategories"
-                                v-model="form.sub_categories"
-                                multiple
-                                size="5"
-                            >
-                                <option
-                                    v-for="s in subcategories"
-                                    :key="s"
-                                    :value="s"
-                                >
-                                    {{ sublabel(s) }}
-                                </option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="campaign-products"
-                                >Individual products</label
-                            ><select
-                                id="campaign-products"
-                                v-model="form.product_ids"
-                                multiple
-                                size="5"
-                            >
-                                <option
-                                    v-for="p in selectableProducts"
-                                    :key="p.id"
-                                    :value="p.id"
-                                >
-                                    {{ p.title }}
-                                </option>
-                            </select>
-                        </div>
-                    </div>
-                    <fieldset>
-                        <legend>Exceptions</legend>
-                        <p class="commerce-small">
-                            Select any products, categories or subcategories
-                            that must keep their usual price. Use Ctrl/Cmd to
-                            select more than one option.
+                        <p v-if="bucket === 'exclude'" class="commerce-small">
+                            Exceptions override inclusions. Check an option to
+                            exclude it.
                         </p>
-                        <div class="campaign-grid">
-                            <div>
-                                <label for="campaign-exclude-categories"
-                                    >Exclude categories</label
-                                ><select
-                                    id="campaign-exclude-categories"
-                                    v-model="form.exclude_categories"
-                                    multiple
-                                    size="4"
-                                >
-                                    <option
-                                        v-for="c in categories"
-                                        :key="c"
-                                        :value="c"
-                                    >
-                                        {{ c }}
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="campaign-exclude-subcategories"
-                                    >Exclude subcategories</label
-                                ><select
-                                    id="campaign-exclude-subcategories"
-                                    v-model="form.exclude_sub_categories"
-                                    multiple
-                                    size="4"
-                                >
-                                    <option
-                                        v-for="s in subcategories"
-                                        :key="s"
-                                        :value="s"
-                                    >
-                                        {{ sublabel(s) }}
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="campaign-exclude-products"
-                                    >Exclude products</label
-                                ><select
-                                    id="campaign-exclude-products"
-                                    v-model="form.exclude_product_ids"
-                                    multiple
-                                    size="4"
-                                >
-                                    <option
-                                        v-for="p in selectableProducts"
-                                        :key="p.id"
-                                        :value="p.id"
-                                    >
-                                        {{ p.title }}
-                                    </option>
-                                </select>
-                            </div>
+                        <p v-else class="commerce-small">
+                            Check any category, subcategory or individual
+                            product to include it.
+                        </p>
+                        <div
+                            class="target-kind-switch"
+                            role="group"
+                            :aria-label="`${bucket === 'include' ? 'Include' : 'Exception'} selection type`"
+                        >
+                            <button
+                                v-for="kind in targetKinds"
+                                :key="kind.key"
+                                type="button"
+                                :aria-pressed="
+                                    activeTargetKind[bucket] === kind.key
+                                "
+                                :disabled="busy"
+                                @click="activeTargetKind[bucket] = kind.key"
+                            >
+                                {{ kind.label }}
+                                <span>{{
+                                    form[targetKey(bucket, kind.key)].length
+                                }}</span>
+                            </button>
                         </div>
-                    </fieldset>
+                        <fieldset class="target-choice-list">
+                            <legend class="target-list-label">
+                                {{
+                                    targetKinds.find(
+                                        (kind) =>
+                                            kind.key ===
+                                            activeTargetKind[bucket]
+                                    )?.label
+                                }}
+                                ·
+                                {{
+                                    filteredTargetOptions(
+                                        activeTargetKind[bucket]
+                                    ).length
+                                }}
+                                choices
+                            </legend>
+                            <label
+                                v-for="option in filteredTargetOptions(
+                                    activeTargetKind[bucket]
+                                )"
+                                :key="option.value"
+                                class="target-choice"
+                            >
+                                <input
+                                    v-model="
+                                        form[
+                                            targetKey(
+                                                bucket,
+                                                activeTargetKind[bucket]
+                                            )
+                                        ]
+                                    "
+                                    type="checkbox"
+                                    :value="option.value"
+                                    :disabled="busy"
+                                />
+                                <span
+                                    ><strong>{{ option.label }}</strong
+                                    ><small>{{ option.context }}</small></span
+                                >
+                            </label>
+                            <p
+                                v-if="
+                                    !filteredTargetOptions(
+                                        activeTargetKind[bucket]
+                                    ).length
+                                "
+                                class="target-empty"
+                            >
+                                No matching choices. Try another search or
+                                selection type.
+                            </p>
+                        </fieldset>
+                        <div
+                            v-if="selectedTargets(bucket).length"
+                            class="target-selected"
+                            :aria-label="`${bucket === 'include' ? 'Included' : 'Excluded'} selections`"
+                        >
+                            <button
+                                v-for="item in selectedTargets(bucket)"
+                                :key="item.key + item.value"
+                                type="button"
+                                :disabled="busy"
+                                :aria-label="`Remove ${bucket === 'include' ? 'inclusion' : 'exception'}: ${item.kind}, ${item.label}`"
+                                @click="removeTarget(item.key, item.value)"
+                            >
+                                <span
+                                    ><small>{{ item.kind }}</small
+                                    >{{ item.label
+                                    }}<small v-if="item.unavailable"
+                                        >Not in current merchant catalog</small
+                                    ></span
+                                ><span aria-hidden="true">×</span>
+                            </button>
+                        </div>
+                        <p v-else class="target-empty">
+                            {{
+                                bucket === 'include'
+                                    ? 'Nothing selected yet.'
+                                    : 'No exceptions. All included products can receive this discount.'
+                            }}
+                        </p>
+                    </section>
                     <section
                         class="campaign-preview"
                         aria-labelledby="coverage-preview"
@@ -903,5 +999,129 @@ fieldset:not(.campaign-editor-fields) {
 .campaign-actions {
     display: flex;
     gap: 0.75rem;
+}
+.target-picker {
+    margin-top: 1.25rem;
+    min-width: 0;
+}
+.target-heading {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+.target-heading h3 {
+    font-size: 1rem;
+    margin: 0;
+}
+.target-heading > span {
+    color: var(--soko-muted);
+    font-size: 0.8rem;
+}
+.target-kind-switch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.75rem 0;
+}
+.target-kind-switch button {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+    background: var(--soko-surface);
+    color: var(--soko-ink);
+}
+.target-kind-switch button[aria-pressed='true'] {
+    background: var(--soko-navy);
+    color: var(--soko-surface);
+    border-color: var(--soko-navy);
+}
+.target-kind-switch button span {
+    margin-left: 0.35rem;
+    opacity: 0.75;
+}
+fieldset.target-choice-list {
+    padding: 0.25rem 0.5rem;
+    max-height: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-color: var(--soko-line);
+}
+.target-list-label {
+    padding: 0 0.3rem;
+    font-size: 0.75rem;
+    color: var(--soko-muted);
+}
+.target-choice-list .target-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    min-height: 48px;
+    padding: 0.65rem 0.35rem;
+    border-bottom: 1px solid var(--soko-line);
+    cursor: pointer;
+    margin: 0;
+}
+.target-choice:last-child {
+    border-bottom: 0;
+}
+.target-choice input {
+    flex: 0 0 auto;
+    margin-top: 0.2rem;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--soko-navy);
+}
+.target-choice > span {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.target-choice strong {
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+.target-choice small,
+.target-selected small {
+    font-size: 0.72rem;
+    color: var(--soko-muted);
+}
+.target-selected {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+}
+.target-selected button {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    min-height: 44px;
+    max-width: 100%;
+    padding: 0.4rem 0.65rem;
+    background: var(--soko-canvas);
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+    color: var(--soko-ink);
+    text-align: left;
+}
+.target-selected button > span:first-child {
+    display: grid;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 0.8rem;
+}
+.target-empty {
+    color: var(--soko-muted);
+    font-size: 0.8rem;
+    margin: 0.65rem 0;
+}
+.target-picker button:focus-visible,
+.target-choice:focus-within {
+    outline: 2px solid var(--soko-amber);
+    outline-offset: 2px;
 }
 </style>

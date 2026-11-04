@@ -94,7 +94,7 @@ test('lists use shared table and create CTA requires creation grant', () => {
     )
     assert.match(source, /:label="`Actions for \$\{product.title\}`"/)
     assert.match(source, /@submit.prevent="removeProduct"/)
-    assert.match(source, /Orders · authorized lines only/)
+    assert.match(source, /Orders · authorized supplier lines/)
 })
 
 test('product and user identities are semantic row headers', () => {

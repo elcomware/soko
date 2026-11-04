@@ -2,12 +2,8 @@
     <div class="site-container merchandising-editor">
         <header class="workspace-heading">
             <div>
-                <p class="eyebrow">Storefront editor</p>
-                <h1>Put the right products in view</h1>
-                <p>
-                    Choose real products, selection rules and the sections
-                    shoppers see.
-                </p>
+                <h1>Storefront</h1>
+                <p>Arrange sections and choose featured products.</p>
             </div>
             <Link href="/dashboard" class="button button-outline"
                 >Back to workspace</Link
@@ -83,11 +79,9 @@
                     class="workspace-panel"
                     aria-labelledby="section-order-title"
                 >
-                    <h2 id="section-order-title">Page section order</h2>
+                    <h2 id="section-order-title">Section order</h2>
                     <p>
-                        Move sections into the order shoppers should encounter
-                        them. The product catalog stays available. Hidden or
-                        empty sections keep their place but do not leave a gap.
+                        Reorder sections. Hidden or empty sections leave no gap.
                     </p>
                     <ol class="section-order-list">
                         <li
@@ -398,14 +392,17 @@
                             maxlength="100"
                     /></label>
                 </section>
-                <p>
-                    Automatic selections prioritize usable product imagery. Only
-                    products matching the shopper’s current filters and
-                    available at their minimum order quantity can appear. Side
-                    cards exclude every hero product. Expired discounts are not
-                    treated as active promotions. Empty sections disappear.
-                    These rules never invent sales or ratings.
-                </p>
+                <details class="selection-rules">
+                    <summary>How automatic selection works</summary>
+                    <p>
+                        Automatic selections prioritize usable product imagery.
+                        Only products matching the shopper’s current filters and
+                        available at their minimum order quantity can appear.
+                        Side cards exclude every hero product. Expired discounts
+                        are not treated as active promotions. Empty sections
+                        disappear. These rules never invent sales or ratings.
+                    </p>
+                </details>
                 <div class="editor-publish-bar">
                     <span
                         >Publishing applies this draft to the live

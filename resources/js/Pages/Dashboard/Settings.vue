@@ -2,7 +2,6 @@
     <div class="site-container settings-page">
         <header class="workspace-heading">
             <div>
-                <p class="eyebrow">Workspace configuration</p>
                 <h1>{{ panelTitle }}</h1>
                 <p>{{ panelDescription }}</p>
             </div>
@@ -107,11 +106,8 @@
             v-if="activePanel === 'brand' && canBrand"
             class="workspace-panel"
         >
-            <h2>Brand identity</h2>
-            <p>
-                Changes apply across the storefront and workspace. Fonts are
-                served locally.
-            </p>
+            <h2>Appearance</h2>
+            <p>Applies to the storefront and workspace.</p>
             <div
                 class="brand-preview"
                 :style="brandTokens(normalizeBrand(brandForm))"
@@ -123,10 +119,7 @@
                     ><small>{{ brandForm.tagline }}</small>
                 </div>
                 <span class="brand-preview-action">Shop the collection</span>
-                <p>
-                    Preview only · Save identity to apply these colors and
-                    fonts.
-                </p>
+                <p>Unsaved preview</p>
             </div>
             <form @submit.prevent="saveBrand()" class="settings-grid">
                 <fieldset
@@ -242,11 +235,10 @@
             v-if="activePanel === 'access' && canPermissions"
             class="workspace-panel"
         >
-            <h2>Resource permissions</h2>
+            <h2>Account permissions</h2>
             <p>
-                Grant only the actions needed. “Own” limits access to the user’s
-                resources. Empty grants revoke access. You cannot change your
-                own permissions.
+                “Own” limits access to that person’s resources. Empty grants
+                revoke access. You cannot change your own permissions.
             </p>
             <label
                 >Account<select
@@ -328,7 +320,7 @@
             class="workspace-panel"
         >
             <div class="settings-section-title">
-                <h2>Merchant payment preferences</h2>
+                <h2>Payment preferences</h2>
                 <span class="configuration-state">Not live</span>
             </div>
             <p>Account: {{ paymentMerchantID }}</p>
@@ -614,18 +606,17 @@ const activePanel = computed(() => {
 const panelTitle = computed(
     () =>
         ({
-            brand: 'Brand & presentation',
-            access: 'Access & permissions',
-            payments: 'Payment configuration',
+            brand: 'Brand',
+            access: 'Access',
+            payments: 'Payments',
         })[activePanel.value] || 'Settings'
 )
 const panelDescription = computed(
     () =>
         ({
-            brand: 'Manage the identity and product presentation shared across your storefront.',
-            access: 'Give each person the resources and actions they need, with explicit scope.',
-            payments:
-                'Prepare merchant payment routes. Collection remains disabled until verified onboarding.',
+            brand: 'Set your store’s name, colors and fonts.',
+            access: 'Choose what each person can view and change.',
+            payments: 'Configure payment preferences. Payments are not live.',
         })[activePanel.value] || 'Manage your workspace.'
 )
 const flash = computed(
