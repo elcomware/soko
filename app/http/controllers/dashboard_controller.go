@@ -164,7 +164,7 @@ func dashboardRecordCapabilities(u *models.User, data *services.WorkspaceData) (
 		}
 	}
 	for _, order := range data.Orders {
-		result["orders"][order.ID] = map[string]bool{"cancel": order.Status == models.OrderStatusPending && u.Can("orders.cancel", order.UserID)}
+		result["orders"][order.ID] = map[string]bool{"cancel": u.Can("orders.read", "") && order.Status == models.OrderStatusPending && u.Can("orders.cancel", order.UserID)}
 	}
 	// Resolve the offer's owner independently of visible catalog rows. An actor
 	// can have offers.decide without products.read, and read-all/write-own grants.

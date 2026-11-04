@@ -4,21 +4,64 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
 import * as Vue from 'vue'
-const source = readFileSync(new URL('../../resources/js/Pages/Dashboard/Index.vue', import.meta.url), 'utf8')
-function harness(grants) {
+import { safeProductDraft } from '../../resources/js/design/productDraft.ts'
+const source = readFileSync(
+    new URL('../../resources/js/Pages/Dashboard/Index.vue', import.meta.url),
+    'utf8'
+)
+function harness(grants, navigation = []) {
     const requests = []
-    const props = { currentUser: { id: 'viewer', role: 'buyer' }, stats: {}, products: [], orders: [], currencies: [], regions: [], recordCapabilities: { products: grants }, capabilities: { readProducts: true, createProducts: false } }
-    let script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-    script += '\n globalThis.harness = { productActions, productAction, productOpen, deleteTarget, busy };'
-    const context = { exports: {}, defineProps: () => props, URL,
-        require: name => name === 'vue' ? Vue : name === '@inertiajs/vue3' ? { usePage: () => ({ url: '/dashboard?section=products', props: {} }), router: { post: (...args) => requests.push(args) } } : name.includes('useCurrency') ? { useCurrency: () => ({ formatPrice: String }) } : {},
+    const reloads = []
+    const props = {
+        currentUser: { id: 'viewer', role: 'buyer' },
+        stats: {},
+        products: [],
+        orders: [],
+        currencies: [],
+        regions: [],
+        recordCapabilities: { products: grants },
+        capabilities: { readProducts: true, createProducts: false },
     }
-    vm.runInNewContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, context)
-    return { ...context.harness, requests, props }
+    let script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
+    script +=
+        '\n globalThis.harness = { productActions, productAction, productOpen, deleteTarget, busy, productForm, productDirty, openProduct, closeProduct, operationActions, openRecord, detailRecord, detailKind, pendingOperation, prepareOperation, confirmOperation, accessSettingsHref, quoteForm, quoteDirty, openQuote, pendingQuote, formError, refreshRecord };'
+    const context = {
+        exports: {},
+        defineProps: () => props,
+        URL,
+        require: (name) =>
+            name === 'vue'
+                ? Vue
+                : name === '@inertiajs/vue3'
+                  ? {
+                        useRemember: data => Vue.reactive(data),
+                        usePage: () => ({
+                            url: '/dashboard?section=products',
+                            props: { workspaceNavigation: navigation },
+                        }),
+                        router: { post: (...args) => requests.push(args), reload: options => reloads.push(options), restore: () => undefined, remember: () => {} },
+                    }
+                  : name.includes('productDraft') ? { safeProductDraft } : name.includes('useCurrency')
+                    ? { useCurrency: () => ({ formatPrice: String }) }
+                    : {},
+    }
+    vm.runInNewContext(
+        ts.transpileModule(script, {
+            compilerOptions: {
+                target: ts.ScriptTarget.ES2022,
+                module: ts.ModuleKind.CommonJS,
+            },
+        }).outputText,
+        context
+    )
+    return { ...context.harness, requests, reloads, props }
 }
 test('product menus only expose per-record permissions, never inferred role permissions', () => {
     const h = harness({ allowed: { update: true, delete: true }, readonly: {} })
-    assert.deepEqual(Array.from(h.productActions({ id: 'allowed' }), x => x.id), ['edit', 'delete'])
+    assert.deepEqual(
+        Array.from(h.productActions({ id: 'allowed' }), (x) => x.id),
+        ['edit', 'delete']
+    )
     assert.equal(h.productActions({ id: 'readonly' }).length, 0)
     assert.equal(h.productActions({ id: 'unknown' }).length, 0)
     h.productAction({ id: 'readonly' }, 'delete')
@@ -40,18 +83,128 @@ test('delete menu opens existing confirmation without sending a mutation, and bu
     assert.equal(h.productOpen.value, false)
 })
 test('lists use shared table and create CTA requires creation grant', () => {
-    assert.equal((source.match(/<AdminTable/g) || []).length, 3)
+    assert.equal((source.match(/<AdminTable/g) || []).length, 5)
     assert.doesNotMatch(source, /<table class="workspace-table"/)
-    assert.match(source, /section === 'products' &&\s+capabilities\?\.createProducts/)
+    assert.match(
+        source,
+        /section === 'products' &&\s+capabilities\?\.createProducts/
+    )
     assert.match(source, /:label="`Actions for \$\{product.title\}`"/)
     assert.match(source, /@submit.prevent="removeProduct"/)
-    assert.match(source, /View items and payment for \$\{order.order_number\}/)
+    assert.match(source, /Orders · authorized lines only/)
 })
 
 test('product and user identities are semantic row headers', () => {
     for (const record of ['product', 'user']) {
-        const row = source.indexOf(`<tr v-for="${record} in visibleRecords" :key="${record}.id">`)
+        const row = source.indexOf(
+            `<tr v-for="${record} in visibleRecords" :key="${record}.id">`
+        )
         assert.ok(row >= 0)
         assert.match(source.slice(row, row + 160), /<th scope="row">/)
     }
+})
+
+test('product drawer snapshots initial data and tracks nested edits without switching drafts', () => {
+    const h = harness({ p: { update: true }, other: { update: true } })
+    h.openProduct({
+        id: 'p',
+        title: 'Original',
+        price_tiers: [{ min_qty: 1, max_qty: 5, price: 4 }],
+    })
+    assert.equal(h.productDirty.value, false)
+    h.productForm.price_tiers[0].price = 3
+    assert.equal(h.productDirty.value, true)
+    h.openProduct({ id: 'other', title: 'Other' })
+    assert.equal(h.productForm.title, 'Original')
+    h.busy.value = true
+    h.closeProduct()
+    assert.equal(h.productOpen.value, true)
+    assert.match(source, /<AdminDrawer[\s\S]*?:dirty="productDirty"/)
+    assert.match(source, /form="product-editor-form"/)
+    assert.match(source, /@click="requestClose"/)
+})
+
+test('operations only expose granted actions and require explicit confirmation before posting', () => {
+    const h = harness({})
+    h.props.recordCapabilities.orders = { o: { cancel: true } }
+    const order = { id: 'o', order_number: 'ORDER-1', status: 'pending', items: [] }
+    assert.deepEqual(Array.from(h.operationActions('orders', order), x => x.id), ['view', 'cancel'])
+    assert.equal(h.operationActions('orders', { id: 'other' }).length, 1)
+    h.openRecord('orders', order, 'cancel')
+    assert.equal(h.pendingOperation.value, 'cancel')
+    assert.equal(h.requests.length, 0)
+    h.confirmOperation()
+    assert.equal(h.requests[0][0], '/dashboard/orders/o/cancel')
+    h.confirmOperation()
+    assert.equal(h.requests.length, 1, 'busy guard prevents repeat submission')
+})
+test('quotation award requires matching visible quote and per-quote grant', () => {
+    const h = harness({})
+    const rfq = { id: 'r', title: 'Request', quotes: [{ id: 'q', updated_at: '2030-01-01T00:00:00Z', unit_price: 10 }] }
+    h.props.recordCapabilities.quotes = { q: { accept: true }, foreign: { accept: true } }
+    h.openRecord('rfqs', rfq)
+    h.prepareOperation('award', { id: 'foreign' })
+    assert.equal(h.pendingOperation.value, '')
+    h.prepareOperation('award', rfq.quotes[0])
+    assert.equal(h.requests.length, 0)
+    h.confirmOperation()
+    assert.equal(h.requests[0][0], '/dashboard/rfqs/r/quotes/q/accept')
+})
+test('offer decisions require confirmation and account settings link requires exact navigation grant', () => {
+    const h = harness({})
+    h.props.recordCapabilities.offers = { offer: { decide: true } }
+    h.openRecord('offers', { id: 'offer', product_title: 'Product' }, 'accepted')
+    assert.equal(h.requests.length, 0)
+    h.confirmOperation()
+    assert.equal(h.requests[0][0], '/dashboard/offers/offer/decision?section=offers')
+    assert.equal(h.requests[0][1].status, 'accepted')
+    assert.equal(h.accessSettingsHref.value, '')
+    const staff = harness({}, [{ href: '/dashboard/settings?panel=access' }])
+    assert.equal(staff.accessSettingsHref.value, '/dashboard/settings?panel=access')
+    assert.deepEqual(Array.from(staff.operationActions('users', { id: 'account' }), x => x.id), ['view'])
+})
+
+test('RFQ close requires scoped grant and quotation drawer tracks dirty values', () => {
+    const h = harness({})
+    h.props.recordCapabilities.rfqs = { r: { close: true, quote: true } }
+    const rfq = { id: 'r', title: 'Request', target_price: 10, quotes: [] }
+    h.openRecord('rfqs', rfq, 'close')
+    assert.equal(h.requests.length, 0)
+    h.confirmOperation()
+    assert.equal(h.requests[0][0], '/dashboard/rfqs/r/close')
+    const quote = harness({})
+    quote.props.recordCapabilities.rfqs = { r: { quote: true } }
+    quote.openQuote(rfq)
+    assert.equal(quote.quoteDirty.value, false)
+    quote.quoteForm.unit_price = 11
+    assert.equal(quote.quoteDirty.value, true)
+})
+
+test('quote award posts reviewed version, keeps snapshot on conflict, and requires fresh review after explicit reload', () => {
+    const h = harness({})
+    h.props.recordCapabilities.quotes = { q: { accept: true } }
+    const quote = { id: 'q', updated_at: '2030-01-01T00:00:00Z', unit_price: 10 }
+    h.openRecord('rfqs', { id: 'r', quotes: [quote] })
+    h.prepareOperation('award', quote)
+    quote.unit_price = 99
+    quote.updated_at = '2030-01-02T00:00:00Z'
+    h.confirmOperation()
+    assert.equal(h.requests[0][1].quote_version, '2030-01-01T00:00:00Z')
+    assert.equal(h.pendingQuote.value.unit_price, 10)
+    h.requests[0][2].onSuccess({ props: { flash: { error: 'Quotation changed. Review current terms.' } } })
+    h.requests[0][2].onFinish()
+    assert.equal(h.pendingOperation.value, 'award')
+    assert.equal(h.pendingQuote.value.unit_price, 10)
+    h.refreshRecord()
+    assert.equal(h.pendingQuote.value.unit_price, 10, 'do not replace terms before refresh succeeds')
+    h.reloads[0].onSuccess({ props: { rfqs: [{ id: 'r', quotes: [quote] }] } })
+    h.reloads[0].onFinish()
+    assert.equal(h.pendingQuote.value, null)
+    assert.equal(h.pendingOperation.value, '')
+    h.confirmOperation()
+    assert.equal(h.requests.length, 1, 'refreshed terms require a new explicit review selection')
+})
+
+test('whole-order cancellation disclosure includes unseen supplier lines', () => {
+    assert.match(source, /entire order, including any supplier lines you cannot see/)
 })

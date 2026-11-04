@@ -36,10 +36,30 @@ func DecideOffer(id, status string, u *models.User) error {
 	return nil
 }
 func ResolveRfq(id, quoteID string, closeOnly bool, u *models.User) error {
+	return resolveRfq(id, quoteID, closeOnly, u, nil)
+}
+
+// ResolveRfqWithQuoteVersion awards only the exact quotation reviewed by the
+// administrator. A stale or absent snapshot requires explicit refresh/review.
+func ResolveRfqWithQuoteVersion(id, quoteID, version string, u *models.User) error {
+	expected, err := time.Parse(time.RFC3339Nano, version)
+	if err != nil || expected.IsZero() {
+		return errors.New("Refresh the quotation details and review the terms before accepting.")
+	}
+	return resolveRfq(id, quoteID, false, u, &expected)
+}
+
+func resolveRfq(id, quoteID string, closeOnly bool, u *models.User, expected *time.Time) error {
 	if u == nil {
 		return errors.New("sign in required")
 	}
 	return facades.Orm().Transaction(func(tx orm.Query) error {
+		// Lock the parent before any reads. Quote submission takes the same
+		// write lock, preventing edits from interleaving with award/closure.
+		// A no-op UPDATE is portable to SQLite, unlike SELECT FOR UPDATE.
+		if _, err := tx.Exec("UPDATE rfqs SET id = id WHERE id = ?", id); err != nil {
+			return err
+		}
 		var rfq models.Rfq
 		if err := tx.Where("id = ?", id).First(&rfq); err != nil {
 			return err
@@ -55,6 +75,9 @@ func ResolveRfq(id, quoteID string, closeOnly bool, u *models.User) error {
 			}
 			if quote.ID == "" || quote.Status != "pending" {
 				return errors.New("quotation is not available")
+			}
+			if expected != nil && !quote.UpdatedAt.Equal(*expected) {
+				return errors.New("This quotation changed. Refresh the details and review the updated terms before accepting.")
 			}
 			status = models.RfqStatusAwarded
 		}

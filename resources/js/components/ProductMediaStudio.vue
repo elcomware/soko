@@ -58,11 +58,14 @@
         </p>
         <p v-if="error" role="alert" class="form-error">{{ error }}</p>
         <p v-if="notice" role="status" class="form-note">{{ notice }}</p>
+        <p v-if="busy" role="status" class="form-note">
+            Working on your image request. Please wait…
+        </p>
         <div
             ref="previewPanel"
             tabindex="-1"
             class="media-cover"
-            v-if="modelValue && (!standalone || activeView === 'library')"
+            v-if="modelValue && !standalone"
         >
             <img :src="modelValue" alt="Current product cover preview" />
             <button
@@ -73,6 +76,87 @@
                 {{ standalone ? 'Close preview' : 'Remove cover' }}
             </button>
         </div>
+        <AdminDrawer
+            v-if="standalone"
+            :open="previewOpen"
+            title="Image preview"
+            description="Inspect your library image. Previewing does not change a product listing."
+            @close="previewOpen = false"
+        >
+            <template v-if="selectedAsset">
+                <div class="media-drawer-preview">
+                    <img
+                        v-show="!previewFailed"
+                        :key="previewAttempt"
+                        :src="selectedAsset.url"
+                        :alt="
+                            selectedAsset.kind === 'mockup'
+                                ? 'Illustrative product mockup preview'
+                                : 'Product photo preview'
+                        "
+                        @error="previewFailed = true"
+                    />
+                    <div v-if="previewFailed" role="alert" class="media-empty">
+                        <strong>Image could not be loaded</strong>
+                        <p>
+                            The image may be temporarily unavailable or your
+                            access may have changed.
+                        </p>
+                        <button
+                            type="button"
+                            class="button button-secondary"
+                            @click="retryPreview"
+                        >
+                            Retry image
+                        </button>
+                    </div>
+                </div>
+                <dl class="media-image-facts">
+                    <div>
+                        <dt>Image type</dt>
+                        <dd>
+                            {{
+                                selectedAsset.kind === 'mockup'
+                                    ? 'Illustrative mockup'
+                                    : 'Product photo'
+                            }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Dimensions</dt>
+                        <dd>
+                            {{ selectedAsset.width }} ×
+                            {{ selectedAsset.height }} px
+                        </dd>
+                    </div>
+                    <div v-if="selectedAsset.created_at">
+                        <dt>Added</dt>
+                        <dd>{{ formatDate(selectedAsset.created_at) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Image ID</dt>
+                        <dd>{{ selectedAsset.id }}</dd>
+                    </div>
+                </dl>
+                <p v-if="selectedAsset.kind === 'mockup'" class="form-note">
+                    This is an illustration, not a photograph or evidence of the
+                    product’s specifications.
+                </p>
+                <p class="form-note">
+                    Images become public when referenced by a saved product.
+                    This preview does not publish or delete the image.
+                </p>
+            </template>
+            <template #footer="{ requestClose }"
+                ><button
+                    type="button"
+                    class="button button-secondary"
+                    @click="requestClose"
+                >
+                    Back to library
+                </button></template
+            >
+        </AdminDrawer>
         <div class="soko-field" v-if="policy.allow_remote && !standalone">
             <label :for="`${id}-url`">Image URL or local asset path</label>
             <input
@@ -463,6 +547,7 @@
 </template>
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, useId } from 'vue'
+import AdminDrawer from './AdminDrawer.vue'
 const props = defineProps<{
     modelValue: string
     gallery: string[]
@@ -477,6 +562,14 @@ const id = useId()
 const mockupPanel = ref<HTMLDetailsElement | null>(null)
 const previewPanel = ref<HTMLDivElement | null>(null)
 const activeView = ref('library')
+const previewOpen = ref(false),
+    selectedAsset = ref<Asset | null>(null),
+    previewFailed = ref(false),
+    previewAttempt = ref(0)
+function retryPreview() {
+    previewFailed.value = false
+    previewAttempt.value++
+}
 const mediaViews = computed(() => [
     { key: 'library', label: 'Image library' },
     { key: 'upload', label: 'Upload photos' },
@@ -494,8 +587,9 @@ async function previewAsset(asset: Asset) {
     emit('update:modelValue', asset.url)
     if (props.standalone) {
         activeView.value = 'library'
-        await nextTick()
-        previewPanel.value?.focus()
+        selectedAsset.value = asset
+        previewFailed.value = false
+        previewOpen.value = true
     }
 }
 async function clearFilters() {
@@ -556,21 +650,50 @@ const colors: { key: 'primary' | 'accent' | 'background'; label: string }[] = [
     { key: 'background', label: 'Background' },
 ]
 async function api(path: string, body?: unknown) {
-    const response = await fetch(path, {
-        method: body === undefined ? 'GET' : 'POST',
-        credentials: 'same-origin',
-        headers: {
-            Accept: 'application/json',
-            ...(body === undefined
-                ? {}
-                : { 'Content-Type': 'application/json' }),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-    })
-    if (response.redirected)
+    let response: Response
+    try {
+        response = await fetch(path, {
+            method: body === undefined ? 'GET' : 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                ...(body === undefined
+                    ? {}
+                    : { 'Content-Type': 'application/json' }),
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
+        })
+    } catch {
+        throw new Error(
+            body === undefined
+                ? 'Could not connect to the media library. Check your connection and try again.'
+                : 'The connection was interrupted. Your change may have been saved. Check the library or reload the policy before trying again.'
+        )
+    }
+    if (response.redirected || response.status === 401)
         throw new Error('Please sign in again before managing images.')
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Image request failed.')
+    let data
+    try {
+        data = await response.json()
+    } catch {
+        throw new Error(
+            body === undefined
+                ? 'The media service returned an unreadable response. Please try again.'
+                : 'The media service could not confirm the result. Check the library or reload the policy before trying again.'
+        )
+    }
+    if (response.status === 403 && path.startsWith('/dashboard/media?')) {
+        canCreate.value = false
+        canManagePolicy.value = false
+        ready.value = false
+    }
+    if (!response.ok)
+        throw new Error(
+            data.error ||
+                (response.status === 403
+                    ? 'You no longer have permission for this media action.'
+                    : 'Image request failed. Please try again.')
+        )
     return data
 }
 async function loadLibrary(targetPage = 1, initial = false) {
@@ -678,7 +801,7 @@ async function customizeCopy(asset: Asset) {
 }
 async function createMockup() {
     await work(async () => {
-        const data = await api('/dashboard/media/mockup', mockup)
+        const data = await api('/dashboard/media/mockup', { ...mockup })
         await selectAsset(data.asset)
     })
 }
@@ -688,13 +811,50 @@ function addGallery(url: string) {
 }
 async function savePolicy() {
     await work(async () => {
-        const data = await api('/dashboard/media/policy', policy)
+        const data = await api('/dashboard/media/policy', { ...policy })
         Object.assign(policy, data.policy)
         notice.value = 'Image policy saved.'
     })
 }
 </script>
 <style scoped>
+.media-drawer-preview {
+    min-height: 180px;
+    display: grid;
+    place-items: center;
+    background: var(--soko-canvas);
+    border: 1px solid var(--soko-border);
+    border-radius: var(--soko-radius);
+    overflow: hidden;
+}
+.media-drawer-preview img {
+    display: block;
+    width: 100%;
+    max-height: 55dvh;
+    object-fit: contain;
+}
+.media-image-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+.media-image-facts dt {
+    color: var(--soko-muted);
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+.media-image-facts dd {
+    margin: 0;
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 400px) {
+    .media-image-facts {
+        grid-template-columns: 1fr;
+    }
+}
+
 .media-view-nav {
     display: flex;
     flex-wrap: wrap;

@@ -23,6 +23,11 @@ func (a *SubmitRfqQuoteAction) ExecuteFromRequest(r *requests.SubmitRfqQuoteRequ
 	}
 	var quote models.RfqQuote
 	err := facades.Orm().Transaction(func(tx orm.Query) error {
+		// Serialize edits with award/closure before reading either the RFQ or
+		// the existing quote. Recheck open status after obtaining the lock.
+		if _, err := tx.Exec("UPDATE rfqs SET id = id WHERE id = ?", r.RfqID); err != nil {
+			return err
+		}
 		var rfq models.Rfq
 		if err := tx.Where("id = ?", r.RfqID).First(&rfq); err != nil {
 			return err

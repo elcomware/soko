@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { reactive, computed, ref } from 'vue'
-function campaignHarness(canManageAll, products = []) {
+function campaignHarness(canManageAll, products = [], campaigns = []) {
     const source = readFileSync(
         new URL(
             '../../resources/js/Pages/Dashboard/Promotions.vue',
@@ -16,8 +16,14 @@ function campaignHarness(canManageAll, products = []) {
         .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
         .replace(/^import .*$/gm, '')
     script +=
-        '\n globalThis.harness = { form, edit, reset, resetDraft, busy, error, eligibleProducts, merchants, selectableProducts, targetSearch };'
+        '\n globalThis.harness = { form, edit, reset, resetDraft, busy, error, eligibleProducts, merchants, selectableProducts, targetSearch, editorOpen, dirty, createCampaign, closeEditor, save, currentTime, status, visibleCampaigns, campaignSearch, statusFilter };'
+    let mount, unmount
+    const clockTimers = []
     const context = {
+        onMounted: fn => { mount = fn },
+        onBeforeUnmount: fn => { unmount = fn },
+        setInterval: (callback, delay) => { clockTimers.push({ callback, delay, cleared: false }); return clockTimers.length },
+        clearInterval: id => { clockTimers[id - 1].cleared = true },
         reactive,
         computed,
         ref,
@@ -25,7 +31,7 @@ function campaignHarness(canManageAll, products = []) {
             canManageAll,
             actorId: 'merchant-own',
             products,
-            campaigns: [],
+            campaigns,
         }),
         document: { getElementById: () => null },
         useMarketplaceForm: () => ({
@@ -44,7 +50,7 @@ function campaignHarness(canManageAll, products = []) {
         }).outputText,
         context
     )
-    return context.harness
+    return { ...context.harness, mount: () => mount(), unmount: () => unmount(), clockTimers }
 }
 for (const canManageAll of [true, false])
     test(`campaign reset restores every default (all permission: ${canManageAll})`, () => {
@@ -161,4 +167,50 @@ test('in-flight campaign saves cannot switch or cancel the current draft', () =>
         '',
         'confirmed success must reset even before onFinish clears busy'
     )
+})
+
+test('campaign drawer starts clean, tracks edits, and success reset closes it', () => {
+    const h = campaignHarness(true)
+    assert.equal(h.editorOpen.value, false)
+    h.createCampaign()
+    assert.equal(h.editorOpen.value, true)
+    assert.equal(h.dirty.value, false)
+    h.form.name = 'Holiday'
+    assert.equal(h.dirty.value, true)
+    h.createCampaign()
+    assert.equal(h.form.name, 'Holiday', 'another create request must not silently reset an open draft')
+    h.busy.value = true
+    h.closeEditor()
+    assert.equal(h.editorOpen.value, true)
+    h.resetDraft()
+    assert.equal(h.editorOpen.value, false)
+    assert.equal(h.dirty.value, false)
+})
+test('reactive campaign clock updates status filters at start and exclusive end', () => {
+    const c = { name: 'Holiday', vendor_id: '', kind: 'percentage', enabled: true, starts_at: '2030-01-01T00:00:00Z', ends_at: '2030-01-02T00:00:00Z' }
+    const h = campaignHarness(true, [], [c])
+    h.currentTime.value = Date.parse(c.starts_at) - 1
+    h.statusFilter.value = 'Scheduled'
+    assert.equal(h.visibleCampaigns.value.length, 1)
+    h.currentTime.value = Date.parse(c.starts_at)
+    assert.equal(h.visibleCampaigns.value.length, 0)
+    h.statusFilter.value = 'Active'
+    assert.equal(h.visibleCampaigns.value.length, 1)
+    h.currentTime.value = Date.parse(c.ends_at)
+    assert.equal(h.status(c), 'Ended')
+    assert.equal(h.visibleCampaigns.value.length, 0)
+    h.statusFilter.value = 'Ended'
+    h.campaignSearch.value = 'holiday'
+    assert.equal(h.visibleCampaigns.value.length, 1)
+    h.campaignSearch.value = 'other'
+    assert.equal(h.visibleCampaigns.value.length, 0)
+})
+
+test('campaign status clock is bounded and cleaned up with page', () => {
+    const h = campaignHarness(true)
+    h.mount()
+    assert.equal(h.clockTimers.length, 1)
+    assert.equal(h.clockTimers[0].delay, 1000)
+    h.unmount()
+    assert.equal(h.clockTimers[0].cleared, true)
 })

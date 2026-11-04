@@ -166,6 +166,20 @@
                         >
                             <SokoIcon name="close" /></button
                     ></label>
+                    <label
+                        v-if="['orders', 'rfqs', 'offers'].includes(section)"
+                        class="operation-status-filter"
+                        >Status<select v-model="recordStatus">
+                            <option value="all">All statuses</option>
+                            <option
+                                v-for="status in statusOptions"
+                                :key="status"
+                                :value="status"
+                            >
+                                {{ humanize(status) }}
+                            </option>
+                        </select></label
+                    >
                     <p role="status">
                         {{ visibleRecords.length }}
                         {{ visibleRecords.length === 1 ? 'record' : 'records'
@@ -177,7 +191,13 @@
                     class="workspace-panel workspace-empty"
                 >
                     <SokoIcon :name="activeNavigation.icon" />
-                    <h2>{{ search ? 'No matching records' : emptyTitle }}</h2>
+                    <h2>
+                        {{
+                            search || recordStatus !== 'all'
+                                ? 'No matching records'
+                                : emptyTitle
+                        }}
+                    </h2>
                     <p>
                         {{
                             search
@@ -186,11 +206,11 @@
                         }}
                     </p>
                     <button
-                        v-if="search"
+                        v-if="search || recordStatus !== 'all'"
                         class="button button-outline"
-                        @click="search = ''"
+                        @click="clearRecordFilters"
                     >
-                        Clear search</button
+                        Clear filters</button
                     ><button
                         v-else-if="
                             section === 'products' &&
@@ -286,16 +306,17 @@
                 </AdminTable>
                 <AdminTable
                     v-else-if="section === 'orders'"
-                    caption="Orders received"
+                    caption="Orders · authorized lines only"
                     class="workspace-admin-list"
                 >
                     <template #header
                         ><tr>
                             <th scope="col">Order</th>
                             <th scope="col">Buyer</th>
-                            <th scope="col">Items and payment</th>
+                            <th scope="col">Visible lines</th>
                             <th scope="col">Status</th>
-                            <th scope="col">Total</th>
+                            <th scope="col">Visible total</th>
+                            <th scope="col">Actions</th>
                         </tr></template
                     >
                     <tr v-for="order in visibleRecords" :key="order.id">
@@ -303,53 +324,8 @@
                             <strong>{{ order.order_number }}</strong
                             ><small>{{ dateLabel(order.created_at) }}</small>
                         </th>
-                        <td>
-                            <strong>{{ order.customer_name || 'Buyer' }}</strong
-                            ><small v-if="order.customer_email">{{
-                                order.customer_email
-                            }}</small>
-                        </td>
-                        <td>
-                            <details class="admin-order-details">
-                                <summary
-                                    :aria-label="`View items and payment for ${order.order_number}`"
-                                >
-                                    {{ (order.items || []).length }} line items
-                                    · Details
-                                </summary>
-                                <ul>
-                                    <li
-                                        v-for="item in order.items || []"
-                                        :key="item.id || item.product_id"
-                                    >
-                                        <strong>{{ item.product_title }}</strong
-                                        ><small
-                                            >{{ item.quantity }} ×
-                                            {{ formatPrice(item.unit_price) }} ·
-                                            {{
-                                                formatPrice(item.total_price)
-                                            }}</small
-                                        >
-                                        <p
-                                            v-if="
-                                                item.product_type &&
-                                                item.product_type !== 'physical'
-                                            "
-                                        >
-                                            Digital fulfillment is arranged
-                                            separately with the supplier.
-                                        </p>
-                                    </li>
-                                </ul>
-                                <p>
-                                    {{
-                                        order.payment_method
-                                            ? humanize(order.payment_method)
-                                            : 'Payment method not recorded'
-                                    }}
-                                </p>
-                            </details>
-                        </td>
+                        <td>{{ order.customer_name || 'Buyer' }}</td>
+                        <td>{{ (order.items || []).length }}</td>
                         <td>
                             <span
                                 class="workspace-status"
@@ -357,169 +333,118 @@
                                 >{{ humanize(order.status) }}</span
                             >
                         </td>
+                        <td>{{ formatPrice(order.total_amount) }}</td>
                         <td>
-                            <strong>{{
-                                formatPrice(order.total_amount)
-                            }}</strong>
+                            <AdminActionMenu
+                                :label="`Actions for order ${order.order_number}`"
+                                :items="operationActions('orders', order)"
+                                :disabled="busy"
+                                @select="
+                                    (id) => openRecord('orders', order, id)
+                                "
+                            />
                         </td>
                     </tr>
                 </AdminTable>
-                <div v-else-if="section === 'rfqs'" class="workspace-records">
-                    <article
-                        v-for="rfq in visibleRecords"
-                        :key="rfq.id"
-                        class="workspace-panel workspace-rfq"
+                <AdminTable
+                    v-else-if="section === 'rfqs'"
+                    caption="Sourcing requests"
+                    class="workspace-admin-list"
+                >
+                    <template #header
+                        ><tr>
+                            <th scope="col">Request</th>
+                            <th scope="col">Buyer</th>
+                            <th scope="col">Quantity / target</th>
+                            <th scope="col">Destination</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Actions</th>
+                        </tr></template
                     >
-                        <header>
-                            <div>
-                                <p class="eyebrow">{{ rfq.rfq_number }}</p>
-                                <h2>{{ rfq.title }}</h2>
-                                <p>
-                                    {{ rfq.buyer_company || rfq.buyer_name }} ·
-                                    {{ rfq.buyer_country || 'Global' }}
-                                </p>
-                            </div>
+                    <tr v-for="rfq in visibleRecords" :key="rfq.id">
+                        <th scope="row">
+                            <strong>{{ rfq.title }}</strong
+                            ><small
+                                >{{ rfq.rfq_number }} ·
+                                {{ rfq.category }}</small
+                            >
+                        </th>
+                        <td>{{ rfq.buyer_company || rfq.buyer_name }}</td>
+                        <td>
+                            {{ Number(rfq.quantity).toLocaleString() }}
+                            units<small>{{
+                                rfq.target_price > 0
+                                    ? formatPrice(rfq.target_price) + ' / unit'
+                                    : 'Open to quotations'
+                            }}</small>
+                        </td>
+                        <td>
+                            {{ rfq.destination_country || 'Not specified' }}
+                        </td>
+                        <td>
                             <span
                                 class="workspace-status"
                                 :data-status="rfq.status"
                                 >{{ humanize(rfq.status) }}</span
                             >
-                        </header>
-                        <p class="workspace-description">
-                            {{
-                                rfq.specifications ||
-                                'No additional specifications provided.'
-                            }}
-                        </p>
-                        <dl class="workspace-facts">
-                            <div>
-                                <dt>Quantity</dt>
-                                <dd>
-                                    {{ Number(rfq.quantity).toLocaleString() }}
-                                    units
-                                </dd>
-                            </div>
-                            <div>
-                                <dt>Target unit price</dt>
-                                <dd>
-                                    {{
-                                        rfq.target_price > 0
-                                            ? formatPrice(rfq.target_price)
-                                            : 'Open to quotations'
-                                    }}
-                                </dd>
-                            </div>
-                            <div>
-                                <dt>Destination</dt>
-                                <dd>{{ rfq.destination_country }}</dd>
-                            </div>
-                            <div>
-                                <dt>Quotations</dt>
-                                <dd>{{ (rfq.quotes || []).length }}</dd>
-                            </div>
-                        </dl>
-                        <footer>
-                            <span>{{ rfq.category }}</span
-                            ><button
-                                v-if="recordCan('rfqs', rfq.id, 'quote')"
-                                class="button button-navy"
-                                @click="openQuote(rfq)"
-                            >
-                                {{
-                                    ownQuote(rfq)
-                                        ? 'Update quotation'
-                                        : 'Submit quotation'
-                                }}<SokoIcon name="arrow" />
-                            </button>
-                        </footer>
-                        <div v-if="ownQuote(rfq)" class="workspace-own-quote">
-                            <SokoIcon name="check" /><span
-                                >Your quotation:
-                                {{ formatPrice(ownQuote(rfq).unit_price) }} per
-                                unit · {{ ownQuote(rfq).lead_time_days }} days ·
-                                {{ humanize(ownQuote(rfq).status) }}</span
-                            >
-                        </div>
-                    </article>
-                </div>
-                <div v-else-if="section === 'offers'" class="workspace-records">
-                    <article
-                        v-for="offer in visibleRecords"
-                        :key="offer.id"
-                        class="workspace-panel workspace-offer"
+                        </td>
+                        <td>
+                            <AdminActionMenu
+                                :label="`Actions for request ${rfq.title}`"
+                                :items="operationActions('rfqs', rfq)"
+                                :disabled="busy"
+                                @select="(id) => openRecord('rfqs', rfq, id)"
+                            />
+                        </td>
+                    </tr>
+                </AdminTable>
+                <AdminTable
+                    v-else-if="section === 'offers'"
+                    caption="Buyer offers"
+                    class="workspace-admin-list"
+                >
+                    <template #header
+                        ><tr>
+                            <th scope="col">Product / received</th>
+                            <th scope="col">Buyer</th>
+                            <th scope="col">Proposal</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Actions</th>
+                        </tr></template
                     >
-                        <header>
-                            <div>
-                                <p class="eyebrow">
-                                    Buyer offer ·
-                                    {{ dateLabel(offer.created_at) }}
-                                </p>
-                                <h2>
-                                    <Link
-                                        :href="`/products/${offer.product_id}`"
-                                        >{{ offer.product_title }}</Link
-                                    >
-                                </h2>
-                                <p>
-                                    {{
-                                        offer.buyer_company || offer.buyer_name
-                                    }}
-                                    <span v-if="offer.buyer_email"
-                                        >· {{ offer.buyer_email }}</span
-                                    >
-                                </p>
-                            </div>
+                    <tr v-for="offer in visibleRecords" :key="offer.id">
+                        <th scope="row">
+                            <strong>{{ offer.product_title }}</strong
+                            ><small>{{ dateLabel(offer.created_at) }}</small>
+                        </th>
+                        <td>{{ offer.buyer_company || offer.buyer_name }}</td>
+                        <td>
+                            {{ formatPrice(offer.offered_price) }} ×
+                            {{ offer.quantity
+                            }}<small
+                                >Total
+                                {{ formatPrice(offer.total_offered) }}</small
+                            >
+                        </td>
+                        <td>
                             <span
                                 class="workspace-status"
                                 :data-status="offer.status"
                                 >{{ humanize(offer.status) }}</span
                             >
-                        </header>
-                        <dl class="workspace-facts">
-                            <div>
-                                <dt>Offered unit price</dt>
-                                <dd>{{ formatPrice(offer.offered_price) }}</dd>
-                            </div>
-                            <div>
-                                <dt>Quantity</dt>
-                                <dd>{{ offer.quantity }} units</dd>
-                            </div>
-                            <div>
-                                <dt>Total offer</dt>
-                                <dd>{{ formatPrice(offer.total_offered) }}</dd>
-                            </div>
-                        </dl>
-                        <p v-if="offer.message" class="workspace-offer-message">
-                            “{{ offer.message }}”
-                        </p>
-                        <footer v-if="recordCan('offers', offer.id, 'decide')">
-                            <span>Choose how to respond to this proposal.</span>
-                            <div class="workspace-row-actions">
-                                <button
-                                    class="button button-outline"
-                                    :disabled="busy"
-                                    @click="decideOffer(offer, 'declined')"
-                                >
-                                    {{
-                                        busyKey === `offer-${offer.id}-declined`
-                                            ? 'Declining…'
-                                            : 'Decline'
-                                    }}</button
-                                ><button
-                                    class="button button-navy"
-                                    :disabled="busy"
-                                    @click="decideOffer(offer, 'accepted')"
-                                >
-                                    {{
-                                        busyKey === `offer-${offer.id}-accepted`
-                                            ? 'Accepting…'
-                                            : 'Accept offer'
-                                    }}
-                                </button>
-                            </div>
-                        </footer>
-                    </article>
-                </div>
+                        </td>
+                        <td>
+                            <AdminActionMenu
+                                :label="`Actions for offer on ${offer.product_title}`"
+                                :items="operationActions('offers', offer)"
+                                :disabled="busy"
+                                @select="
+                                    (id) => openRecord('offers', offer, id)
+                                "
+                            />
+                        </td>
+                    </tr>
+                </AdminTable>
                 <AdminTable
                     v-else-if="section === 'users'"
                     caption="Marketplace users"
@@ -532,6 +457,7 @@
                             <th scope="col">Company</th>
                             <th scope="col">Country</th>
                             <th scope="col">Verification</th>
+                            <th scope="col">Actions</th>
                         </tr>
                     </template>
                     <tr v-for="user in visibleRecords" :key="user.id">
@@ -555,442 +481,804 @@
                                 }}</span
                             >
                         </td>
+                        <td>
+                            <button
+                                type="button"
+                                class="admin-view-link"
+                                :aria-label="`View account ${user.name}`"
+                                @click="openRecord('users', user)"
+                            >
+                                View account
+                            </button>
+                        </td>
                     </tr>
                 </AdminTable>
             </template>
         </div>
 
-        <SokoDialog
+        <AdminDrawer
+            :open="!!detailRecord"
+            :title="detailTitle"
+            :description="
+                detailKind === 'users'
+                    ? 'Account directory · read-only'
+                    : 'Only information authorized for your account is shown.'
+            "
+            :busy="busy"
+            @close="closeRecord"
+        >
+            <div v-if="detailRecord" class="operation-details">
+                <div v-if="formError" class="operation-error">
+                    <p role="alert" class="form-error">{{ formError }}</p>
+                    <p class="operation-scope-note">
+                        The reviewed terms have not been changed automatically.
+                        Refresh to load current details, then review and confirm
+                        again.
+                    </p>
+                    <button
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy"
+                        @click="refreshRecord"
+                    >
+                        Refresh details and review again
+                    </button>
+                </div>
+                <template v-if="detailKind === 'orders'">
+                    <p class="operation-scope-note">
+                        This view contains the order lines you are authorized to
+                        see. The visible total may represent only your portion
+                        of an order.
+                    </p>
+                    <dl class="operation-facts">
+                        <div>
+                            <dt>Buyer</dt>
+                            <dd>
+                                {{ detailRecord.customer_name || 'Buyer'
+                                }}<small>{{
+                                    detailRecord.customer_email
+                                }}</small>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Status</dt>
+                            <dd>{{ humanize(detailRecord.status) }}</dd>
+                        </div>
+                        <div>
+                            <dt>Payment</dt>
+                            <dd>
+                                {{
+                                    detailRecord.payment_method ||
+                                    'Payment method not recorded'
+                                }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Visible total</dt>
+                            <dd>
+                                {{ formatPrice(detailRecord.total_amount) }}
+                            </dd>
+                        </div>
+                    </dl>
+                    <h3>Visible order lines</h3>
+                    <ul class="operation-lines">
+                        <li
+                            v-for="item in detailRecord.items || []"
+                            :key="item.id || item.product_id"
+                        >
+                            <strong>{{ item.product_title }}</strong
+                            ><span
+                                >{{ item.quantity }} ×
+                                {{ formatPrice(item.unit_price) }} ·
+                                {{ formatPrice(item.total_price) }}</span
+                            ><small
+                                v-if="
+                                    item.product_type &&
+                                    item.product_type !== 'physical'
+                                "
+                                >Digital fulfillment is arranged separately with
+                                the supplier.</small
+                            >
+                        </li>
+                    </ul>
+                </template>
+                <template v-else-if="detailKind === 'rfqs'">
+                    <dl class="operation-facts">
+                        <div>
+                            <dt>Buyer</dt>
+                            <dd>
+                                {{
+                                    detailRecord.buyer_company ||
+                                    detailRecord.buyer_name
+                                }}<small>{{
+                                    detailRecord.buyer_country
+                                }}</small>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Quantity</dt>
+                            <dd>{{ detailRecord.quantity }} units</dd>
+                        </div>
+                        <div>
+                            <dt>Destination</dt>
+                            <dd>
+                                {{
+                                    detailRecord.destination_country ||
+                                    'Not specified'
+                                }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Status</dt>
+                            <dd>{{ humanize(detailRecord.status) }}</dd>
+                        </div>
+                    </dl>
+                    <h3>Requirements</h3>
+                    <p class="operation-message">
+                        {{
+                            detailRecord.specifications ||
+                            'No additional specifications provided.'
+                        }}
+                    </p>
+                    <h3>Visible quotations</h3>
+                    <p class="operation-scope-note">
+                        Only quotations your account can access are listed. This
+                        is not necessarily the full set of competing quotes.
+                    </p>
+                    <p v-if="!(detailRecord.quotes || []).length">
+                        No quotations are visible to your account.
+                    </p>
+                    <ul class="operation-lines">
+                        <li
+                            v-for="quote in detailRecord.quotes || []"
+                            :key="quote.id"
+                        >
+                            <strong>{{
+                                quote.vendor_company ||
+                                quote.vendor_name ||
+                                'Supplier quotation'
+                            }}</strong
+                            ><span
+                                >{{ formatPrice(quote.unit_price) }} / unit ·
+                                {{ quote.lead_time_days }} days ·
+                                {{ humanize(quote.status) }}</span
+                            >
+                            <p v-if="quote.notes" class="operation-message">
+                                {{ quote.notes }}
+                            </p>
+                            <button
+                                v-if="recordCan('quotes', quote.id, 'accept')"
+                                type="button"
+                                class="button button-outline"
+                                :disabled="busy"
+                                @click="prepareOperation('award', quote)"
+                            >
+                                Review award
+                            </button>
+                        </li>
+                    </ul>
+                </template>
+                <template v-else-if="detailKind === 'offers'">
+                    <Link
+                        :href="`/products/${detailRecord.product_id}`"
+                        class="admin-view-link"
+                        >View product</Link
+                    >
+                    <dl class="operation-facts">
+                        <div>
+                            <dt>Buyer</dt>
+                            <dd>
+                                {{
+                                    detailRecord.buyer_company ||
+                                    detailRecord.buyer_name
+                                }}<small>{{ detailRecord.buyer_email }}</small>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Unit proposal</dt>
+                            <dd>
+                                {{ formatPrice(detailRecord.offered_price) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Quantity</dt>
+                            <dd>{{ detailRecord.quantity }} units</dd>
+                        </div>
+                        <div>
+                            <dt>Total proposal</dt>
+                            <dd>
+                                {{ formatPrice(detailRecord.total_offered) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Status</dt>
+                            <dd>{{ humanize(detailRecord.status) }}</dd>
+                        </div>
+                    </dl>
+                    <h3>Buyer message</h3>
+                    <p class="operation-message">
+                        {{ detailRecord.message || 'No message supplied.' }}
+                    </p>
+                </template>
+                <template v-else-if="detailKind === 'users'">
+                    <dl class="operation-facts">
+                        <div>
+                            <dt>Email</dt>
+                            <dd>{{ detailRecord.email }}</dd>
+                        </div>
+                        <div>
+                            <dt>Role</dt>
+                            <dd>{{ humanize(detailRecord.role) }}</dd>
+                        </div>
+                        <div>
+                            <dt>Company</dt>
+                            <dd>
+                                {{
+                                    detailRecord.company_name || 'Not provided'
+                                }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Country</dt>
+                            <dd>
+                                {{ detailRecord.country || 'Not provided' }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Verification</dt>
+                            <dd>
+                                {{
+                                    detailRecord.verified
+                                        ? 'Verified'
+                                        : 'Unverified'
+                                }}
+                            </dd>
+                        </div>
+                    </dl>
+                    <p>
+                        Account details are read-only here. Permissions are
+                        managed separately.
+                    </p>
+                    <Link
+                        v-if="accessSettingsHref"
+                        :href="accessSettingsHref"
+                        class="button button-outline"
+                        >Open access settings</Link
+                    >
+                </template>
+                <section
+                    v-if="pendingOperation"
+                    class="operation-confirm"
+                    aria-labelledby="operation-confirm-title"
+                >
+                    <h3 id="operation-confirm-title" tabindex="-1">
+                        {{ operationConfirmation.title }}
+                    </h3>
+                    <p>{{ operationConfirmation.message }}</p>
+                    <p v-if="pendingQuote">
+                        {{ formatPrice(pendingQuote.unit_price) }} per unit ·
+                        {{ pendingQuote.lead_time_days }} days ·
+                        {{ detailRecord.quantity }} units
+                    </p>
+                    <div class="workspace-form-actions">
+                        <button
+                            type="button"
+                            class="button button-outline"
+                            :disabled="busy"
+                            @click="keepReviewing"
+                        >
+                            Keep reviewing</button
+                        ><button
+                            type="button"
+                            class="button button-navy"
+                            :disabled="busy"
+                            @click="confirmOperation"
+                        >
+                            {{
+                                busy ? 'Saving…' : operationConfirmation.button
+                            }}
+                        </button>
+                    </div>
+                </section>
+            </div>
+            <template #footer="{ requestClose }"
+                ><div class="workspace-form-actions">
+                    <button
+                        type="button"
+                        class="button button-outline"
+                        :disabled="busy"
+                        @click="requestClose"
+                    >
+                        Close details</button
+                    ><template v-if="detailRecord && !pendingOperation"
+                        ><button
+                            v-for="action in operationActions(
+                                detailKind,
+                                detailRecord
+                            ).filter((a) => a.id !== 'view')"
+                            :key="action.id"
+                            type="button"
+                            class="button button-navy"
+                            :disabled="busy"
+                            @click="
+                                openRecord(detailKind, detailRecord, action.id)
+                            "
+                        >
+                            {{ action.label }}
+                        </button></template
+                    >
+                </div></template
+            >
+        </AdminDrawer>
+        <AdminDrawer
             :open="productOpen"
             :title="
                 editingProduct
                     ? 'Edit product listing'
                     : 'Create product listing'
             "
+            :busy="busy"
+            :dirty="productDirty"
+            description="Manage product details, pricing, inventory and media. Changes are published only when you save."
             @close="closeProduct"
         >
             <form
+                id="product-editor-form"
                 class="soko-form workspace-form"
                 novalidate
                 @submit.prevent="saveProduct"
             >
-                <p
-                    v-if="formError"
-                    id="product-errors"
-                    role="alert"
-                    class="form-error"
-                >
-                    {{ formError }}
-                </p>
-                <div class="soko-field">
-                    <label for="product-title"
-                        >Product title <span>(required)</span></label
-                    ><input
-                        id="product-title"
-                        v-model="productForm.title"
-                        name="title"
-                        required
-                        minlength="3"
-                        maxlength="255"
-                        :aria-invalid="invalidFields.includes('title')"
-                        aria-describedby="product-errors"
-                    />
-                </div>
-                <div class="form-row">
-                    <div class="soko-field">
-                        <label for="product-format">Selling format</label
-                        ><select
-                            id="product-format"
-                            v-model="productForm.format"
-                            @change="changeFormat"
-                        >
-                            <option value="wholesale">Wholesale</option>
-                            <option value="retail">Ready to buy</option>
-                            <option value="make_offer">Make an offer</option>
-                            <option value="digital">Digital product</option>
-                        </select>
-                    </div>
-                    <div class="soko-field">
-                        <label for="product-category">Category</label
-                        ><select
-                            id="product-category"
-                            v-model="productForm.category"
-                        >
-                            <option
-                                v-for="category in categories"
-                                :key="category"
-                            >
-                                {{ category }}
-                            </option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="soko-field">
-                        <label for="product-sku"
-                            >SKU
-                            <span>(optional; generated if empty)</span></label
-                        ><input
-                            id="product-sku"
-                            v-model="productForm.sku"
-                            maxlength="64"
-                        />
-                    </div>
-                    <div class="soko-field">
-                        <label for="product-subcategory"
-                            >Subcategory <span>(optional)</span></label
-                        ><input
-                            id="product-subcategory"
-                            v-model="productForm.sub_category"
-                            maxlength="128"
-                        />
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="soko-field">
-                        <label for="product-price"
-                            >Unit price (USD) <span>(required)</span></label
-                        ><input
-                            id="product-price"
-                            v-model.number="productForm.price"
-                            name="price"
-                            type="number"
-                            required
-                            min="0.01"
-                            step="0.01"
-                            :aria-invalid="invalidFields.includes('price')"
-                            aria-describedby="product-errors"
-                        />
-                    </div>
-                    <div
-                        v-if="productForm.format === 'wholesale'"
-                        class="soko-field"
-                    >
-                        <label for="product-bulk">Bulk unit price (USD)</label
-                        ><input
-                            id="product-bulk"
-                            v-model.number="productForm.wholesale_price"
-                            name="wholesale_price"
-                            type="number"
-                            min="0"
-                            :max="productForm.price"
-                            step="0.01"
-                            :aria-invalid="
-                                invalidFields.includes('wholesale_price')
-                            "
-                            aria-describedby="product-errors"
-                        />
-                    </div>
-                </div>
-                <fieldset class="workspace-fieldset workspace-tier-editor">
-                    <legend>Volume pricing <span>(optional)</span></legend>
-                    <p class="form-note">
-                        Set the unit price for each quantity range. Ranges must
-                        be in ascending order and cannot overlap. Use 0 as the
-                        last maximum quantity for no upper limit.
-                    </p>
-                    <p v-if="!productForm.price_tiers.length" class="form-note">
-                        No volume tiers: the base price applies. For wholesale
-                        quantities of 10 or more, an explicit bulk unit price
-                        applies when greater than zero.
-                    </p>
-                    <div
-                        v-for="(tier, index) in productForm.price_tiers"
-                        :key="index"
-                        class="workspace-tier-row"
-                    >
-                        <div class="soko-field">
-                            <label :for="`tier-min-${index}`"
-                                >Minimum units
-                                <span class="sr-only"
-                                    >for tier {{ index + 1 }}</span
-                                ></label
-                            ><input
-                                :id="`tier-min-${index}`"
-                                v-model.number="tier.min_qty"
-                                :name="`price_tiers_${index}_min_qty`"
-                                data-tier-field
-                                type="number"
-                                required
-                                :min="productForm.moq"
-                                max="1000000"
-                                step="1"
-                                :aria-invalid="
-                                    invalidFields.includes(
-                                        `price_tiers_${index}_min_qty`
-                                    )
-                                "
-                                aria-describedby="product-errors"
-                            />
-                        </div>
-                        <div class="soko-field">
-                            <label :for="`tier-max-${index}`"
-                                >Maximum units
-                                <span class="sr-only"
-                                    >for tier {{ index + 1 }}</span
-                                ></label
-                            ><input
-                                :id="`tier-max-${index}`"
-                                v-model.number="tier.max_qty"
-                                :name="`price_tiers_${index}_max_qty`"
-                                data-tier-field
-                                type="number"
-                                required
-                                min="0"
-                                max="1000000"
-                                step="1"
-                                :aria-invalid="
-                                    invalidFields.includes(
-                                        `price_tiers_${index}_max_qty`
-                                    )
-                                "
-                                aria-describedby="product-errors"
-                            />
-                        </div>
-                        <div class="soko-field">
-                            <label :for="`tier-price-${index}`"
-                                >Unit price (USD)
-                                <span class="sr-only"
-                                    >for tier {{ index + 1 }}</span
-                                ></label
-                            ><input
-                                :id="`tier-price-${index}`"
-                                v-model.number="tier.price"
-                                :name="`price_tiers_${index}_price`"
-                                data-tier-field
-                                type="number"
-                                required
-                                min="0.01"
-                                step="0.01"
-                                :aria-invalid="
-                                    invalidFields.includes(
-                                        `price_tiers_${index}_price`
-                                    )
-                                "
-                                aria-describedby="product-errors"
-                            />
-                        </div>
-                        <button
-                            type="button"
-                            class="workspace-action is-danger"
-                            :disabled="busy"
-                            @click="productForm.price_tiers.splice(index, 1)"
-                        >
-                            Remove tier {{ index + 1 }}
-                        </button>
-                    </div>
-                    <button
-                        type="button"
-                        class="button button-outline"
-                        :disabled="busy || !canAddTier"
-                        @click="addPriceTier"
-                    >
-                        Add price tier
-                    </button>
-                    <p
-                        v-if="productForm.price_tiers.length >= 20"
-                        class="form-note"
-                    >
-                        A listing supports up to 20 price tiers.
+                <fieldset class="product-editor-fields" :disabled="busy">
+                    <p v-if="productRecovered" class="form-note" role="status">
+                        Recovered your unsaved listing draft. Reselect
+                        unfinished uploads and re-enter any unpublished digital
+                        delivery link before saving.
                     </p>
                     <p
-                        v-else-if="
-                            productForm.price_tiers.length && !canAddTier
-                        "
-                        class="form-note"
+                        v-if="formError"
+                        id="product-errors"
+                        role="alert"
+                        class="form-error"
                     >
-                        Give the last tier an upper limit before adding another
-                        range.
+                        {{ formError }}
                     </p>
-                </fieldset>
-                <div class="form-row">
                     <div class="soko-field">
-                        <label for="product-moq">Minimum order quantity</label
+                        <label for="product-title"
+                            >Product title <span>(required)</span></label
                         ><input
-                            id="product-moq"
-                            v-model.number="productForm.moq"
-                            name="moq"
+                            id="product-title"
+                            v-model="productForm.title"
+                            name="title"
                             required
-                            type="number"
-                            min="1"
-                            step="1"
-                            :aria-invalid="invalidFields.includes('moq')"
-                            aria-describedby="product-errors"
-                        />
-                    </div>
-                    <div class="soko-field">
-                        <label for="product-stock">Stock available</label
-                        ><input
-                            id="product-stock"
-                            v-model.number="productForm.stock"
-                            name="stock"
-                            required
-                            type="number"
-                            :min="productForm.format === 'digital' ? -1 : 0"
-                            step="1"
-                            :aria-invalid="invalidFields.includes('stock')"
-                            :aria-describedby="
-                                productForm.format === 'digital'
-                                    ? 'stock-guidance product-errors'
-                                    : 'product-errors'
-                            "
-                        />
-                        <p
-                            v-if="productForm.format === 'digital'"
-                            id="stock-guidance"
-                            class="form-note"
-                        >
-                            Enter available units, or -1 for unlimited digital
-                            inventory.
-                        </p>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="soko-field">
-                        <label for="product-condition">Condition</label
-                        ><select
-                            id="product-condition"
-                            v-model="productForm.condition"
-                        >
-                            <option value="new">New</option>
-                            <option value="refurbished">Refurbished</option>
-                            <option value="open_box">Open box</option>
-                        </select>
-                    </div>
-                    <div class="soko-field">
-                        <label for="product-region">Market region</label
-                        ><select
-                            id="product-region"
-                            v-model="productForm.region"
-                        >
-                            <option
-                                v-for="region in marketRegions"
-                                :key="region.id"
-                                :value="region.id"
-                            >
-                                {{ region.name }}
-                            </option>
-                        </select>
-                    </div>
-                </div>
-                <div class="soko-field">
-                    <label for="product-value"
-                        >What this product helps the buyer achieve</label
-                    >
-                    <textarea
-                        id="product-value"
-                        v-model="productForm.short_desc"
-                        maxlength="300"
-                        rows="2"
-                        placeholder="Describe the useful outcome, without unsupported claims."
-                    />
-                    <p class="form-note">
-                        A concise value proposition for product discovery. Up to
-                        300 characters.
-                    </p>
-                </div>
-                <ProductMediaStudio
-                    v-if="
-                        editingProduct
-                            ? recordCan('products', editingProduct.id, 'media')
-                            : capabilities?.createMedia
-                    "
-                    v-model="productForm.image_url"
-                    v-model:gallery="productForm.gallery_urls"
-                    :title="productForm.title"
-                />
-                <label class="workspace-checkbox"
-                    ><input
-                        type="checkbox"
-                        v-model="productForm.featured"
-                    />Feature this listing in discovery</label
-                >
-                <div class="soko-field">
-                    <label for="product-description"
-                        >Description and specifications</label
-                    ><textarea
-                        class="resize-none"
-                        id="product-description"
-                        v-model="productForm.description"
-                        rows="4"
-                    />
-                </div>
-                <fieldset
-                    v-if="productForm.format === 'digital'"
-                    class="workspace-fieldset"
-                >
-                    <legend>Digital delivery</legend>
-                    <div class="soko-field">
-                        <label for="product-type">Product type</label
-                        ><select id="product-type" v-model="productForm.type">
-                            <option value="digital_software">Software</option>
-                            <option value="digital_asset">Digital asset</option>
-                            <option value="digital_license">License</option>
-                        </select>
-                    </div>
-                    <div class="soko-field">
-                        <label for="product-download"
-                            >Download URL <span>(optional)</span></label
-                        ><input
-                            id="product-download"
-                            v-model="productForm.digital_download_url"
-                            type="url"
-                            name="digital_download_url"
-                            placeholder="https://…"
-                            :aria-invalid="
-                                invalidFields.includes('digital_download_url')
-                            "
+                            minlength="3"
+                            maxlength="255"
+                            :aria-invalid="invalidFields.includes('title')"
                             aria-describedby="product-errors"
                         />
                     </div>
                     <div class="form-row">
                         <div class="soko-field">
-                            <label for="product-license"
-                                >License key format
-                                <span>(optional)</span></label
+                            <label for="product-format">Selling format</label
+                            ><select
+                                id="product-format"
+                                v-model="productForm.format"
+                                @change="changeFormat"
+                            >
+                                <option value="wholesale">Wholesale</option>
+                                <option value="retail">Ready to buy</option>
+                                <option value="make_offer">
+                                    Make an offer
+                                </option>
+                                <option value="digital">Digital product</option>
+                            </select>
+                        </div>
+                        <div class="soko-field">
+                            <label for="product-category">Category</label
+                            ><select
+                                id="product-category"
+                                v-model="productForm.category"
+                            >
+                                <option
+                                    v-for="category in categories"
+                                    :key="category"
+                                >
+                                    {{ category }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="soko-field">
+                            <label for="product-sku"
+                                >SKU
+                                <span
+                                    >(optional; generated if empty)</span
+                                ></label
                             ><input
-                                id="product-license"
-                                v-model="productForm.digital_license_format"
-                                placeholder="SOKO-XXXX-XXXX"
+                                id="product-sku"
+                                v-model="productForm.sku"
+                                maxlength="64"
                             />
                         </div>
                         <div class="soko-field">
-                            <label for="product-size"
-                                >File size <span>(optional)</span></label
+                            <label for="product-subcategory"
+                                >Subcategory <span>(optional)</span></label
                             ><input
-                                id="product-size"
-                                v-model="productForm.digital_file_size"
-                                placeholder="e.g. 24 MB"
+                                id="product-subcategory"
+                                v-model="productForm.sub_category"
+                                maxlength="128"
                             />
                         </div>
                     </div>
+                    <div class="form-row">
+                        <div class="soko-field">
+                            <label for="product-price"
+                                >Unit price (USD) <span>(required)</span></label
+                            ><input
+                                id="product-price"
+                                v-model.number="productForm.price"
+                                name="price"
+                                type="number"
+                                required
+                                min="0.01"
+                                step="0.01"
+                                :aria-invalid="invalidFields.includes('price')"
+                                aria-describedby="product-errors"
+                            />
+                        </div>
+                        <div
+                            v-if="productForm.format === 'wholesale'"
+                            class="soko-field"
+                        >
+                            <label for="product-bulk"
+                                >Bulk unit price (USD)</label
+                            ><input
+                                id="product-bulk"
+                                v-model.number="productForm.wholesale_price"
+                                name="wholesale_price"
+                                type="number"
+                                min="0"
+                                :max="productForm.price"
+                                step="0.01"
+                                :aria-invalid="
+                                    invalidFields.includes('wholesale_price')
+                                "
+                                aria-describedby="product-errors"
+                            />
+                        </div>
+                    </div>
+                    <fieldset class="workspace-fieldset workspace-tier-editor">
+                        <legend>Volume pricing <span>(optional)</span></legend>
+                        <p class="form-note">
+                            Set the unit price for each quantity range. Ranges
+                            must be in ascending order and cannot overlap. Use 0
+                            as the last maximum quantity for no upper limit.
+                        </p>
+                        <p
+                            v-if="!productForm.price_tiers.length"
+                            class="form-note"
+                        >
+                            No volume tiers: the base price applies. For
+                            wholesale quantities of 10 or more, an explicit bulk
+                            unit price applies when greater than zero.
+                        </p>
+                        <div
+                            v-for="(tier, index) in productForm.price_tiers"
+                            :key="index"
+                            class="workspace-tier-row"
+                        >
+                            <div class="soko-field">
+                                <label :for="`tier-min-${index}`"
+                                    >Minimum units
+                                    <span class="sr-only"
+                                        >for tier {{ index + 1 }}</span
+                                    ></label
+                                ><input
+                                    :id="`tier-min-${index}`"
+                                    v-model.number="tier.min_qty"
+                                    :name="`price_tiers_${index}_min_qty`"
+                                    data-tier-field
+                                    type="number"
+                                    required
+                                    :min="productForm.moq"
+                                    max="1000000"
+                                    step="1"
+                                    :aria-invalid="
+                                        invalidFields.includes(
+                                            `price_tiers_${index}_min_qty`
+                                        )
+                                    "
+                                    aria-describedby="product-errors"
+                                />
+                            </div>
+                            <div class="soko-field">
+                                <label :for="`tier-max-${index}`"
+                                    >Maximum units
+                                    <span class="sr-only"
+                                        >for tier {{ index + 1 }}</span
+                                    ></label
+                                ><input
+                                    :id="`tier-max-${index}`"
+                                    v-model.number="tier.max_qty"
+                                    :name="`price_tiers_${index}_max_qty`"
+                                    data-tier-field
+                                    type="number"
+                                    required
+                                    min="0"
+                                    max="1000000"
+                                    step="1"
+                                    :aria-invalid="
+                                        invalidFields.includes(
+                                            `price_tiers_${index}_max_qty`
+                                        )
+                                    "
+                                    aria-describedby="product-errors"
+                                />
+                            </div>
+                            <div class="soko-field">
+                                <label :for="`tier-price-${index}`"
+                                    >Unit price (USD)
+                                    <span class="sr-only"
+                                        >for tier {{ index + 1 }}</span
+                                    ></label
+                                ><input
+                                    :id="`tier-price-${index}`"
+                                    v-model.number="tier.price"
+                                    :name="`price_tiers_${index}_price`"
+                                    data-tier-field
+                                    type="number"
+                                    required
+                                    min="0.01"
+                                    step="0.01"
+                                    :aria-invalid="
+                                        invalidFields.includes(
+                                            `price_tiers_${index}_price`
+                                        )
+                                    "
+                                    aria-describedby="product-errors"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                class="workspace-action is-danger"
+                                :disabled="busy"
+                                @click="
+                                    productForm.price_tiers.splice(index, 1)
+                                "
+                            >
+                                Remove tier {{ index + 1 }}
+                            </button>
+                        </div>
+                        <button
+                            type="button"
+                            class="button button-outline"
+                            :disabled="busy || !canAddTier"
+                            @click="addPriceTier"
+                        >
+                            Add price tier
+                        </button>
+                        <p
+                            v-if="productForm.price_tiers.length >= 20"
+                            class="form-note"
+                        >
+                            A listing supports up to 20 price tiers.
+                        </p>
+                        <p
+                            v-else-if="
+                                productForm.price_tiers.length && !canAddTier
+                            "
+                            class="form-note"
+                        >
+                            Give the last tier an upper limit before adding
+                            another range.
+                        </p>
+                    </fieldset>
+                    <div class="form-row">
+                        <div class="soko-field">
+                            <label for="product-moq"
+                                >Minimum order quantity</label
+                            ><input
+                                id="product-moq"
+                                v-model.number="productForm.moq"
+                                name="moq"
+                                required
+                                type="number"
+                                min="1"
+                                step="1"
+                                :aria-invalid="invalidFields.includes('moq')"
+                                aria-describedby="product-errors"
+                            />
+                        </div>
+                        <div class="soko-field">
+                            <label for="product-stock">Stock available</label
+                            ><input
+                                id="product-stock"
+                                v-model.number="productForm.stock"
+                                name="stock"
+                                required
+                                type="number"
+                                :min="productForm.format === 'digital' ? -1 : 0"
+                                step="1"
+                                :aria-invalid="invalidFields.includes('stock')"
+                                :aria-describedby="
+                                    productForm.format === 'digital'
+                                        ? 'stock-guidance product-errors'
+                                        : 'product-errors'
+                                "
+                            />
+                            <p
+                                v-if="productForm.format === 'digital'"
+                                id="stock-guidance"
+                                class="form-note"
+                            >
+                                Enter available units, or -1 for unlimited
+                                digital inventory.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="soko-field">
+                            <label for="product-condition">Condition</label
+                            ><select
+                                id="product-condition"
+                                v-model="productForm.condition"
+                            >
+                                <option value="new">New</option>
+                                <option value="refurbished">Refurbished</option>
+                                <option value="open_box">Open box</option>
+                            </select>
+                        </div>
+                        <div class="soko-field">
+                            <label for="product-region">Market region</label
+                            ><select
+                                id="product-region"
+                                v-model="productForm.region"
+                            >
+                                <option
+                                    v-for="region in marketRegions"
+                                    :key="region.id"
+                                    :value="region.id"
+                                >
+                                    {{ region.name }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="soko-field">
+                        <label for="product-value"
+                            >What this product helps the buyer achieve</label
+                        >
+                        <textarea
+                            id="product-value"
+                            v-model="productForm.short_desc"
+                            maxlength="300"
+                            rows="2"
+                            placeholder="Describe the useful outcome, without unsupported claims."
+                        />
+                        <p class="form-note">
+                            A concise value proposition for product discovery.
+                            Up to 300 characters.
+                        </p>
+                    </div>
+                    <ProductMediaStudio
+                        v-if="
+                            editingProduct
+                                ? recordCan(
+                                      'products',
+                                      editingProduct.id,
+                                      'media'
+                                  )
+                                : capabilities?.createMedia
+                        "
+                        v-model="productForm.image_url"
+                        v-model:gallery="productForm.gallery_urls"
+                        :title="productForm.title"
+                    />
+                    <label class="workspace-checkbox"
+                        ><input
+                            type="checkbox"
+                            v-model="productForm.featured"
+                        />Feature this listing in discovery</label
+                    >
+                    <div class="soko-field">
+                        <label for="product-description"
+                            >Description and specifications</label
+                        ><textarea
+                            class="resize-none"
+                            id="product-description"
+                            v-model="productForm.description"
+                            rows="4"
+                        />
+                    </div>
+                    <fieldset
+                        v-if="productForm.format === 'digital'"
+                        class="workspace-fieldset"
+                    >
+                        <legend>Digital delivery</legend>
+                        <div class="soko-field">
+                            <label for="product-type">Product type</label
+                            ><select
+                                id="product-type"
+                                v-model="productForm.type"
+                            >
+                                <option value="digital_software">
+                                    Software
+                                </option>
+                                <option value="digital_asset">
+                                    Digital asset
+                                </option>
+                                <option value="digital_license">License</option>
+                            </select>
+                        </div>
+                        <div class="soko-field">
+                            <label for="product-download"
+                                >Download URL <span>(optional)</span></label
+                            ><input
+                                id="product-download"
+                                v-model="productForm.digital_download_url"
+                                type="url"
+                                name="digital_download_url"
+                                placeholder="https://…"
+                                :aria-invalid="
+                                    invalidFields.includes(
+                                        'digital_download_url'
+                                    )
+                                "
+                                aria-describedby="product-errors"
+                            />
+                        </div>
+                        <div class="form-row">
+                            <div class="soko-field">
+                                <label for="product-license"
+                                    >License key format
+                                    <span>(optional)</span></label
+                                ><input
+                                    id="product-license"
+                                    v-model="productForm.digital_license_format"
+                                    placeholder="SOKO-XXXX-XXXX"
+                                />
+                            </div>
+                            <div class="soko-field">
+                                <label for="product-size"
+                                    >File size <span>(optional)</span></label
+                                ><input
+                                    id="product-size"
+                                    v-model="productForm.digital_file_size"
+                                    placeholder="e.g. 24 MB"
+                                />
+                            </div>
+                        </div>
+                    </fieldset>
+                    <label
+                        v-if="productForm.format !== 'digital'"
+                        class="workspace-checkbox"
+                        ><input
+                            v-model="productForm.accepts_offers"
+                            type="checkbox"
+                        />Accept buyer offers on this listing</label
+                    >
+                    <p class="form-note">
+                        Prices are entered in USD. Display currency conversion
+                        does not change the listing's base price.
+                    </p>
+                    <p v-if="editingProduct" class="form-note">
+                        If inventory changes while you are editing, reopen the
+                        listing before trying again.
+                    </p>
                 </fieldset>
-                <label
-                    v-if="productForm.format !== 'digital'"
-                    class="workspace-checkbox"
-                    ><input
-                        v-model="productForm.accepts_offers"
-                        type="checkbox"
-                    />Accept buyer offers on this listing</label
-                >
-                <p class="form-note">
-                    Prices are entered in USD. Display currency conversion does
-                    not change the listing's base price.
-                </p>
-                <p v-if="editingProduct" class="form-note">
-                    If inventory changes while you are editing, reopen the
-                    listing before trying again.
-                </p>
+            </form>
+            <template #footer="{ requestClose }">
                 <div class="workspace-form-actions">
                     <button
                         type="button"
                         class="button button-outline"
                         :disabled="busy"
-                        @click="closeProduct"
+                        @click="requestClose"
                     >
                         Cancel</button
                     ><button
                         type="submit"
+                        form="product-editor-form"
                         class="button button-navy"
                         :disabled="busy"
                     >
@@ -1003,8 +1291,8 @@
                         }}
                     </button>
                 </div>
-            </form>
-        </SokoDialog>
+            </template>
+        </AdminDrawer>
         <SokoDialog
             :open="!!deleteTarget"
             title="Delete product listing?"
@@ -1035,15 +1323,19 @@
                 </div>
             </form></SokoDialog
         >
-        <SokoDialog
+        <AdminDrawer
             :open="!!quoteTarget"
             :title="
                 quoteTarget && ownQuote(quoteTarget)
                     ? 'Update your quotation'
                     : 'Submit a quotation'
             "
+            :busy="busy"
+            :dirty="quoteDirty"
             @close="closeQuote"
             ><form
+                id="quote-editor-form"
+                :inert="busy || undefined"
                 class="soko-form workspace-form"
                 novalidate
                 @submit.prevent="saveQuote"
@@ -1105,31 +1397,36 @@
                         placeholder="Describe what's included, shipping terms and any conditions."
                     />
                 </div>
-                <div class="workspace-form-actions">
+            </form>
+            <template #footer="{ requestClose }"
+                ><div class="workspace-form-actions">
                     <button
                         type="button"
                         class="button button-outline"
                         :disabled="busy"
-                        @click="closeQuote"
+                        @click="requestClose"
                     >
                         Cancel</button
                     ><button
                         type="submit"
+                        form="quote-editor-form"
                         class="button button-navy"
                         :disabled="busy"
                     >
                         {{ busy ? 'Sending quotation…' : 'Send quotation' }}
                     </button>
-                </div>
-            </form></SokoDialog
+                </div></template
+            ></AdminDrawer
         >
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { safeProductDraft } from '@/design/productDraft'
 import { Link, router, usePage } from '@inertiajs/vue3'
 import SokoDialog from '@/components/SokoDialog.vue'
+import AdminDrawer from '@/components/AdminDrawer.vue'
 import AdminTable from '@/components/AdminTable.vue'
 import AdminActionMenu from '@/components/AdminActionMenu.vue'
 import SokoIcon from '@/components/SokoIcon.vue'
@@ -1174,6 +1471,218 @@ const props = defineProps<{
 }>()
 const recordCan = (kind: string, id: string, action: string) =>
     props.recordCapabilities?.[kind]?.[id]?.[action] === true
+const detailRecord = ref<RecordData | null>(null)
+const detailKind = ref('')
+const pendingOperation = ref('')
+const pendingQuote = ref<RecordData | null>(null)
+const detailTitle = computed(
+    () =>
+        detailRecord.value?.order_number ||
+        detailRecord.value?.title ||
+        detailRecord.value?.product_title ||
+        detailRecord.value?.name ||
+        'Record details'
+)
+const accessSettingsHref = computed(
+    () =>
+        ((page.props.workspaceNavigation as RecordData[]) || []).find(
+            (item) => item.href === '/dashboard/settings?panel=access'
+        )?.href || ''
+)
+const operationActions = (kind: string, record: RecordData) => [
+    { id: 'view', label: 'View details' },
+    ...(kind === 'orders' && recordCan(kind, record.id, 'cancel')
+        ? [{ id: 'cancel', label: 'Review cancellation', danger: true }]
+        : []),
+    ...(kind === 'rfqs' && recordCan(kind, record.id, 'quote')
+        ? [{ id: 'quote', label: 'Prepare quotation' }]
+        : []),
+    ...(kind === 'rfqs' && recordCan(kind, record.id, 'close')
+        ? [{ id: 'close', label: 'Review closing request', danger: true }]
+        : []),
+    ...(kind === 'offers' && recordCan(kind, record.id, 'decide')
+        ? [
+              { id: 'accepted', label: 'Review acceptance' },
+              { id: 'declined', label: 'Review decline', danger: true },
+          ]
+        : []),
+]
+function openRecord(kind: string, record: RecordData, action = 'view') {
+    if (
+        busy.value ||
+        !operationActions(kind, record).some((item) => item.id === action)
+    )
+        return
+    if (action === 'quote') {
+        detailRecord.value = null
+        openQuote(record)
+        return
+    }
+    detailKind.value = kind
+    detailRecord.value = record
+    pendingOperation.value = ''
+    pendingQuote.value = null
+    formError.value = ''
+    if (action !== 'view') prepareOperation(action)
+}
+function closeRecord() {
+    if (!busy.value) {
+        detailRecord.value = null
+        pendingOperation.value = ''
+        pendingQuote.value = null
+    }
+}
+function prepareOperation(action: string, quote: RecordData | null = null) {
+    const record = detailRecord.value
+    if (busy.value || !record) return
+    if (action === 'award') {
+        if (
+            detailKind.value !== 'rfqs' ||
+            !quote ||
+            !(record.quotes || []).some((q: RecordData) => q.id === quote.id) ||
+            !recordCan('quotes', quote.id, 'accept')
+        )
+            return
+    } else if (
+        !operationActions(detailKind.value, record).some(
+            (item) => item.id === action && item.id !== 'view'
+        )
+    )
+        return
+    pendingOperation.value = action
+    pendingQuote.value = quote ? JSON.parse(JSON.stringify(quote)) : null
+    void nextTick(() => {
+        if (
+            typeof document !== 'undefined' &&
+            pendingOperation.value === action
+        )
+            document.getElementById('operation-confirm-title')?.focus()
+    })
+}
+const operationConfirmation = computed(
+    () =>
+        ({
+            cancel: {
+                title: 'Cancel the entire pending order?',
+                message:
+                    'This cancels the entire order, including any supplier lines you cannot see in this view, and releases all reserved inventory. Payment is not refunded or collected by this action.',
+                button: 'Confirm cancellation',
+            },
+            close: {
+                title: 'Close this sourcing request?',
+                message: 'This ends the open request and stops new quotations.',
+                button: 'Close request',
+            },
+            award: {
+                title: 'Award this quotation?',
+                message:
+                    'This accepts the selected supplier quotation and resolves the sourcing request. Review the price, lead time and terms before confirming. No payment is collected.',
+                button: 'Accept quotation',
+            },
+            accepted: {
+                title: 'Accept this buyer offer?',
+                message:
+                    'This records acceptance of the displayed proposal. No payment or fulfillment is performed.',
+                button: 'Accept offer',
+            },
+            declined: {
+                title: 'Decline this buyer offer?',
+                message: 'This marks the displayed proposal as declined.',
+                button: 'Decline offer',
+            },
+        })[pendingOperation.value] || { title: '', message: '', button: '' }
+)
+function confirmOperation() {
+    const record = detailRecord.value,
+        action = pendingOperation.value
+    if (!record || busy.value || !action) return
+    if (action === 'accepted' || action === 'declined') {
+        if (detailKind.value === 'offers') decideOffer(record, action)
+        return
+    }
+    if (action === 'award' && !pendingQuote.value?.updated_at) {
+        formError.value =
+            'Quotation version is missing. Refresh details and review the current terms before awarding.'
+        return
+    }
+    let url = ''
+    if (
+        action === 'cancel' &&
+        detailKind.value === 'orders' &&
+        recordCan('orders', record.id, 'cancel')
+    )
+        url = `/dashboard/orders/${record.id}/cancel`
+    if (
+        action === 'close' &&
+        detailKind.value === 'rfqs' &&
+        recordCan('rfqs', record.id, 'close')
+    )
+        url = `/dashboard/rfqs/${record.id}/close`
+    if (
+        action === 'award' &&
+        detailKind.value === 'rfqs' &&
+        pendingQuote.value &&
+        (record.quotes || []).some(
+            (q: RecordData) => q.id === pendingQuote.value?.id
+        ) &&
+        recordCan('quotes', pendingQuote.value.id, 'accept')
+    )
+        url = `/dashboard/rfqs/${record.id}/quotes/${pendingQuote.value.id}/accept`
+    if (!url) return
+    mutate(
+        url,
+        action === 'award'
+            ? { quote_version: String(pendingQuote.value?.updated_at) }
+            : {},
+        action,
+        () => {
+            detailRecord.value = null
+            pendingOperation.value = ''
+            pendingQuote.value = null
+        },
+        true
+    )
+}
+function refreshRecord() {
+    if (busy.value || !detailRecord.value) return
+    const kind = detailKind.value,
+        id = detailRecord.value.id
+    busy.value = true
+    router.reload({
+        only: [kind, 'recordCapabilities'],
+        onSuccess: (response) => {
+            const latest = ((response.props[kind] as RecordData[]) || []).find(
+                (record) => record.id === id
+            )
+            if (!latest) {
+                formError.value =
+                    'This record is no longer available in your workspace. Close these details and review the list.'
+                return
+            }
+            detailRecord.value = latest
+            pendingOperation.value = ''
+            pendingQuote.value = null
+            formError.value = ''
+        },
+        onError: () => {
+            formError.value =
+                'Could not refresh these details. Your previous review is still displayed.'
+        },
+        onNetworkError: () => {
+            formError.value =
+                'Connection lost while refreshing. Your previous review is still displayed.'
+            return false
+        },
+        onHttpException: () => {
+            formError.value =
+                'Could not refresh these details. Your previous review is still displayed.'
+            return false
+        },
+        onFinish: () => {
+            busy.value = false
+        },
+    })
+}
 const productActions = (product: RecordData) => [
     ...(recordCan('products', product.id, 'update')
         ? [{ id: 'edit', label: 'Edit product' }]
@@ -1294,10 +1803,30 @@ const descriptions: Record<string, string> = {
 const sectionDescription = computed(() => descriptions[section.value])
 const sectionHref = (id: string) => `/dashboard?section=${id}`
 const search = ref('')
+const recordStatus = ref('all')
+function keepReviewing() {
+    pendingOperation.value = ''
+    pendingQuote.value = null
+}
+function clearRecordFilters() {
+    search.value = ''
+    recordStatus.value = 'all'
+}
+const statusOptions = computed(() =>
+    [
+        ...new Set(
+            records.value
+                .map((item) => String(item.status || ''))
+                .filter(Boolean)
+        ),
+    ].sort()
+)
 const pageError = ref('')
 const localNotice = ref('')
 watch(section, () => {
     search.value = ''
+    recordStatus.value = 'all'
+    closeRecord()
     pageError.value = ''
     localNotice.value = ''
 })
@@ -1313,8 +1842,12 @@ const records = computed<RecordData[]>(
 )
 const visibleRecords = computed(() => {
     const query = search.value.trim().toLowerCase()
+    const scoped =
+        recordStatus.value === 'all'
+            ? records.value
+            : records.value.filter((item) => item.status === recordStatus.value)
     return query
-        ? records.value.filter((item) =>
+        ? scoped.filter((item) =>
               [
                   'title',
                   'sku',
@@ -1326,6 +1859,8 @@ const visibleRecords = computed(() => {
                   'rfq_number',
                   'buyer_company',
                   'buyer_name',
+                  'buyer_email',
+                  'destination_country',
                   'product_title',
                   'name',
                   'email',
@@ -1338,7 +1873,7 @@ const visibleRecords = computed(() => {
                       .includes(query)
               )
           )
-        : records.value
+        : scoped
 })
 const emptyTitle = computed(
     () =>
@@ -1506,6 +2041,55 @@ const emptyProduct = () => ({
     accepts_offers: false,
 })
 const productForm = reactive(emptyProduct())
+const productSnapshot = ref('')
+const productRecovered = ref(false)
+const productDirty = computed(
+    () =>
+        productOpen.value &&
+        JSON.stringify(productForm) !== productSnapshot.value
+)
+const productDraftKey = `soko.product-editor.${props.currentUser.id}`
+const restoredProductDraft = router.restore(productDraftKey) as
+    RecordData | undefined
+if (restoredProductDraft?.open && restoredProductDraft.form) {
+    const record = restoredProductDraft.productId
+        ? (props.products || []).find(
+              (p: RecordData) => p.id === restoredProductDraft.productId
+          )
+        : null
+    const allowed = record
+        ? recordCan('products', record.id, 'update')
+        : !restoredProductDraft.productId && props.capabilities?.createProducts
+    if (allowed) {
+        Object.assign(productForm, safeProductDraft(restoredProductDraft.form))
+        productForm.digital_download_url = record?.digital_download_url || ''
+        editingProduct.value = record || null
+        productSnapshot.value = ''
+        productRecovered.value = true
+        productOpen.value = true
+    }
+}
+watch(
+    [productForm, productOpen],
+    () => {
+        router.remember(
+            productOpen.value
+                ? {
+                      open: true,
+                      productId: editingProduct.value?.id || '',
+                      form: safeProductDraft(productForm),
+                  }
+                : null,
+            productDraftKey
+        )
+    },
+    { deep: true }
+)
+function clearProductDraft() {
+    productOpen.value = false
+    productRecovered.value = false
+    router.remember(null, productDraftKey)
+}
 const categories = [
     'Industrial & Machinery',
     'Electronics & Telecom',
@@ -1528,6 +2112,7 @@ const marketRegions = computed(() =>
           ]
 )
 const openProduct = (product?: RecordData) => {
+    if (busy.value || productOpen.value) return
     if (
         product
             ? !recordCan('products', product.id, 'update')
@@ -1551,6 +2136,8 @@ const openProduct = (product?: RecordData) => {
     }
     formError.value = ''
     invalidFields.value = []
+    productRecovered.value = false
+    productSnapshot.value = JSON.stringify(productForm)
     productOpen.value = true
 }
 const canAddTier = computed(() => {
@@ -1608,7 +2195,7 @@ const changeFormat = () => {
     }
 }
 const closeProduct = () => {
-    if (!busy.value) productOpen.value = false
+    if (!busy.value) clearProductDraft()
 }
 const saveProduct = (event: Event) => {
     if (busy.value) return
@@ -1620,14 +2207,16 @@ const saveProduct = (event: Event) => {
         { ...productForm },
         'product',
         () => {
-            productOpen.value = false
+            clearProductDraft()
             localNotice.value = id
                 ? 'Listing changes saved.'
                 : 'Listing published.'
-            router.get(
-                sectionHref('products'),
-                {},
-                { preserveState: true, preserveScroll: true }
+            void nextTick(() =>
+                router.get(
+                    sectionHref('products'),
+                    {},
+                    { preserveState: true, preserveScroll: true }
+                )
             )
         },
         true
@@ -1657,12 +2246,16 @@ const removeProduct = () => {
 }
 const quoteTarget = ref<RecordData | null>(null)
 const quoteForm = reactive({ unit_price: 0, lead_time_days: 7, notes: '' })
+const quoteSnapshot = ref(JSON.stringify(quoteForm))
+const quoteDirty = computed(
+    () => JSON.stringify(quoteForm) !== quoteSnapshot.value
+)
 const ownQuote = (rfq: RecordData) =>
     (rfq.quotes || []).find(
         (quote: RecordData) => quote.vendor_id === props.currentUser.id
     )
 const openQuote = (rfq: RecordData) => {
-    if (!recordCan('rfqs', rfq.id, 'quote')) return
+    if (busy.value || !recordCan('rfqs', rfq.id, 'quote')) return
     quoteTarget.value = rfq
     const quote = ownQuote(rfq)
     Object.assign(quoteForm, {
@@ -1670,6 +2263,7 @@ const openQuote = (rfq: RecordData) => {
         lead_time_days: quote?.lead_time_days ?? 7,
         notes: quote?.notes ?? '',
     })
+    quoteSnapshot.value = JSON.stringify(quoteForm)
     formError.value = ''
     invalidFields.value = []
 }
@@ -1690,7 +2284,7 @@ const saveQuote = (event: Event) => {
     )
 }
 const decideOffer = (offer: RecordData, status: 'accepted' | 'declined') => {
-    if (!recordCan('offers', offer.id, 'decide')) return
+    if (busy.value || !recordCan('offers', offer.id, 'decide')) return
     mutate(
         `/dashboard/offers/${offer.id}/decision?section=offers`,
         { status },
@@ -1698,7 +2292,10 @@ const decideOffer = (offer: RecordData, status: 'accepted' | 'declined') => {
         () => {
             localNotice.value =
                 status === 'accepted' ? 'Offer accepted.' : 'Offer declined.'
-        }
+            detailRecord.value = null
+            pendingOperation.value = ''
+        },
+        true
     )
 }
 const contentFields = [
@@ -1746,6 +2343,79 @@ const saveContent = (event: Event) => {
 </script>
 
 <style scoped>
+.operation-status-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+}
+.operation-status-filter select {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+    background: var(--soko-surface);
+    color: var(--soko-ink);
+}
+.operation-details {
+    display: grid;
+    gap: 1.25rem;
+}
+.operation-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin: 0;
+}
+.operation-facts dt {
+    font-size: 0.8rem;
+    color: var(--soko-muted);
+    margin-bottom: 0.4rem;
+}
+.operation-facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.operation-facts small,
+.operation-lines small {
+    display: block;
+    color: var(--soko-muted);
+    font-size: 0.8125rem;
+}
+.operation-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.8rem;
+}
+.operation-lines li {
+    display: grid;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+}
+.operation-scope-note {
+    background: var(--soko-canvas);
+    padding: 1rem;
+    border-radius: var(--soko-radius);
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+.operation-message {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}
+.operation-confirm {
+    border: 2px solid var(--soko-navy);
+    border-radius: var(--soko-radius);
+    padding: 1.25rem;
+    display: grid;
+    gap: 1rem;
+}
+
 .workspace-admin-list .workspace-status {
     font-size: 0.8125rem;
 }
@@ -1794,5 +2464,15 @@ const saveContent = (event: Event) => {
     font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--soko-muted);
+}
+</style>
+
+<style scoped>
+.product-editor-fields {
+    display: contents;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
 }
 </style>

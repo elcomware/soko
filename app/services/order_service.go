@@ -45,7 +45,10 @@ func CancelOrder(id string, actor *models.User) error {
 		if err := tx.Where("id = ?", id).First(&order); err != nil {
 			return err
 		}
-		if order.ID == "" || !actor.Can("orders.cancel", order.UserID) {
+		// Cancellation releases every line, not merely a seller's visible
+		// subset. Enforce full-order authority in the shared service so an
+		// alternate HTTP route cannot bypass the workspace restriction.
+		if order.ID == "" || !actor.Can("orders.cancel", order.UserID) || (actor.ID != order.UserID && !actor.Can("orders.read", "")) {
 			return errors.New("order not found or access denied")
 		}
 		result, err := tx.Model(&models.Order{}).Where("id = ? AND status = ?", id, models.OrderStatusPending).Update(map[string]any{"status": models.OrderStatusCancelled, "updated_at": time.Now()})

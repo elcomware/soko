@@ -18,7 +18,7 @@ function mediaHarness(props = {}) {
         .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
         .replace(/^import .*$/gm, '')
     script +=
-        '\n globalThis.harness = { customizeCopy, mockup, mockupPanel, busy, error, notice, previewAsset, previewPanel, activeView, mediaViews, loadLibrary, clearFilters, search, kind, policy };'
+        '\n globalThis.harness = { customizeCopy, mockup, mockupPanel, busy, error, notice, previewAsset, previewPanel, activeView, mediaViews, loadLibrary, clearFilters, search, kind, policy, api, canCreate, canManagePolicy, ready, previewOpen, selectedAsset, previewFailed, previewAttempt, retryPreview };'
     const requests = [],
         events = [],
         emissions = []
@@ -133,14 +133,17 @@ test('failed recipe request preserves current editor and releases busy state for
     assert.equal(h.mockup.title, 'Coffee')
 })
 
-test('standalone preview moves to library and focuses the enlarged preview', async () => {
+test('standalone preview opens shared drawer without changing view access', async () => {
     const h = mediaHarness({ standalone: true })
     h.activeView.value = 'upload'
     h.previewPanel.value = { focus: () => h.events.push(['preview-focus']) }
     await h.previewAsset({ url: '/media/selected' })
     assert.equal(h.activeView.value, 'library')
     assert.deepEqual(h.emissions, [['update:modelValue', '/media/selected']])
-    assert.deepEqual(h.events, [['preview-focus']])
+    assert.equal(h.previewOpen.value, true)
+    assert.equal(h.selectedAsset.value.url, '/media/selected')
+    assert.equal(h.events.length, 0, 'shared drawer owns focus management')
+    assert.match(h.source, /<AdminDrawer/)
 })
 
 test('policy-only delegates land on policy; disabled mockups have no navigation entry', async () => {
@@ -185,4 +188,54 @@ test('clear filters clears both query and image kind before requesting page one'
         }),
     })
     await pending
+})
+
+test('interrupted saves report uncertain outcome without automatic retry', async () => {
+    const h = mediaHarness()
+    const pending = h.api('/dashboard/media/mockup', { template: 'box' })
+    h.requests[0].reject(new Error('Network unavailable'))
+    await assert.rejects(pending, /may have been saved/)
+    assert.equal(h.requests.length, 1)
+})
+
+test('non-JSON service failures are explained instead of leaking parser errors', async () => {
+    const h = mediaHarness()
+    const pending = h.api('/dashboard/media?page=1')
+    h.requests[0].resolve({
+        ok: false,
+        status: 502,
+        json: async () => {
+            throw new SyntaxError('Unexpected token <')
+        },
+    })
+    await assert.rejects(pending, /unreadable response/)
+})
+
+test('revoked library access clears stale creation and policy controls', async () => {
+    const h = mediaHarness()
+    h.canCreate.value = true
+    h.canManagePolicy.value = true
+    h.ready.value = true
+    const pending = h.loadLibrary(1)
+    h.requests[0].resolve({
+        ok: false,
+        status: 403,
+        json: async () => ({ error: 'Media access is not permitted.' }),
+    })
+    await pending
+    assert.equal(h.canCreate.value, false)
+    assert.equal(h.canManagePolicy.value, false)
+    assert.equal(h.ready.value, false)
+    assert.match(h.error.value, /not permitted/)
+})
+
+test('failed preview can reload without modifying or deleting the asset', async () => {
+    const h = mediaHarness({ standalone: true })
+    await h.previewAsset({ id: 'image', url: '/media/image' })
+    h.previewFailed.value = true
+    h.retryPreview()
+    assert.equal(h.previewFailed.value, false)
+    assert.equal(h.previewAttempt.value, 1)
+    assert.equal(h.selectedAsset.value.id, 'image')
+    assert.equal(h.requests.length, 0)
 })
