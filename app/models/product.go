@@ -79,9 +79,10 @@ type Product struct {
 	UpdatedAt            time.Time     `json:"updated_at"`
 
 	// In-memory / JSON presentation fields
-	PriceTiers  []PriceTier `gorm:"-" json:"price_tiers,omitempty"`
-	GalleryUrls []string    `gorm:"-" json:"gallery_urls,omitempty"`
-	Tags        []string    `gorm:"-" json:"tags,omitempty"`
+	Pricing     *ProductPrice `gorm:"-" json:"pricing,omitempty"`
+	PriceTiers  []PriceTier   `gorm:"-" json:"price_tiers,omitempty"`
+	GalleryUrls []string      `gorm:"-" json:"gallery_urls,omitempty"`
+	Tags        []string      `gorm:"-" json:"tags,omitempty"`
 }
 
 func (Product) TableName() string {

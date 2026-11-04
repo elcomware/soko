@@ -8,6 +8,7 @@
     --soko-ink: #172d43;
     --soko-muted: #5e6d7d;
     --soko-line: #dfe5eb;
+    --soko-border: var(--soko-line);
     --soko-navy: #142f48;
     --soko-amber: #f3ac32;
     --soko-amber-hover: #e79a20;
@@ -1801,3 +1802,5 @@
         grid-template-columns: 1fr 1fr;
     }
 }
+
+@import './shop.css';

@@ -15,10 +15,26 @@
             <div class="detail-media-column">
                 <div class="detail-media">
                     <img
+                        v-if="displayImage"
                         :src="displayImage"
                         :alt="product.title"
                         @error="onMediaError"
-                    /><span class="commerce-badge">{{
+                    />
+                    <div
+                        v-else
+                        class="detail-image-placeholder"
+                        role="img"
+                        aria-label="Product image not provided"
+                    >
+                        <SokoIcon name="package" />
+                        <p>Product image not provided</p>
+                    </div>
+                    <span
+                        v-if="isIllustrativeImage({ image_url: displayImage })"
+                        class="detail-image-disclosure"
+                        >Illustrative stock image</span
+                    >
+                    <span class="commerce-badge">{{
                         label(product.format)
                     }}</span>
                 </div>
@@ -115,9 +131,30 @@
                     }}
                 </p>
                 <div class="detail-price">
-                    {{ formatPrice(unitPrice)
+                    {{
+                        unitPrice === null
+                            ? quoteError
+                                ? 'Price unavailable'
+                                : 'Updating price…'
+                            : formatPrice(unitPrice)
                     }}<span>/ {{ digital ? 'license' : 'unit' }}</span>
                 </div>
+                <p
+                    v-if="currentQuote?.discount_per_unit > 0"
+                    class="commerce-small"
+                >
+                    <del>{{
+                        formatPrice(currentQuote.original_unit_price)
+                    }}</del>
+                    · {{ currentQuote.promotion_name }} · Save
+                    {{ formatPrice(currentQuote.discount_per_unit) }} per unit
+                </p>
+                <p v-if="quoteError" role="alert" class="form-error">
+                    {{ quoteError }}
+                    <button type="button" @click="refreshQuote">
+                        Retry price
+                    </button>
+                </p>
                 <p class="commerce-muted">
                     {{
                         activeCurrency.code === 'USD'
@@ -127,10 +164,14 @@
                               ' conversion · orders recorded in USD'
                     }}
                 </p>
+                <p v-if="product.price_tiers?.length" class="commerce-small">
+                    Base volume prices below. Current promotions are applied to
+                    your selected quantity above.
+                </p>
                 <div
                     v-if="product.price_tiers?.length"
                     class="detail-tiers"
-                    aria-label="Volume pricing"
+                    aria-label="Base volume pricing before any current promotion"
                 >
                     <div
                         v-for="tier in product.price_tiers"
@@ -190,12 +231,18 @@
                     <div class="detail-total">
                         <span>Estimated total</span
                         ><strong>{{
-                            formatPrice(unitPrice * (Number(quantity) || 0))
+                            unitPrice === null
+                                ? '—'
+                                : formatPrice(
+                                      unitPrice * (Number(quantity) || 0)
+                                  )
                         }}</strong>
                     </div>
                     <button
                         class="button button-amber button-full"
-                        :disabled="busy || product.stock === 0"
+                        :disabled="
+                            busy || product.stock === 0 || unitPrice === null
+                        "
                     >
                         {{ busy ? 'Adding…' : 'Add to cart'
                         }}<SokoIcon name="arrow" /></button
@@ -203,7 +250,9 @@
                         v-if="product.accepts_offers"
                         type="button"
                         class="button button-subtle button-full"
-                        :disabled="busy || product.stock === 0"
+                        :disabled="
+                            busy || product.stock === 0 || unitPrice === null
+                        "
                         @click="openOffer"
                     >
                         Make an offer
@@ -242,7 +291,8 @@
                     :href="'/products/' + item.id"
                     class="commerce-panel related-card"
                     ><img
-                        :src="item.image_url"
+                        v-if="productImage(item)"
+                        :src="productImage(item)"
                         :alt="item.title"
                         loading="lazy"
                     />
@@ -251,7 +301,13 @@
                             label(item.format)
                         }}</span>
                         <h3>{{ item.title }}</h3>
-                        <strong>{{ formatPrice(item.price) }}</strong>
+                        <p
+                            v-if="isIllustrativeImage(item)"
+                            class="commerce-small"
+                        >
+                            Illustrative stock image
+                        </p>
+                        <span>View product and pricing</span>
                     </div></Link
                 >
             </div>
@@ -333,13 +389,14 @@
     </div>
 </template>
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Link, usePage, router } from '@inertiajs/vue3'
 import SokoIcon from '@/components/SokoIcon.vue'
 import SokoDialog from '@/components/SokoDialog.vue'
 import { useCurrency, type Currency } from '@/composables/useCurrency'
 import { useMarketplaceForm } from '@/composables/useMarketplaceForm'
 import '@/../css/commerce.css'
+import { productImage, isIllustrativeImage } from '@/design/merchandising'
 const props = defineProps<{
     product: any
     related: any[]
@@ -364,32 +421,115 @@ const gallery = computed(
                 props.product.image_url,
                 ...(props.product.gallery_urls || []),
             ])
-        ).filter((image) => image && !failedImages.value.has(image)) as string[]
+        ).filter(
+            (image) =>
+                productImage({ image_url: image }) &&
+                !failedImages.value.has(image)
+        ) as string[]
 )
 const displayImage = computed(() =>
     gallery.value.includes(selectedImage.value)
         ? selectedImage.value
-        : gallery.value[0] || '/public/images/soko-industry.jpg'
+        : gallery.value[0] || ''
 )
 function onMediaError(event: Event) {
     const src = (event.currentTarget as HTMLImageElement).getAttribute('src')
     if (src) failedImages.value.add(src)
 }
-const unitPrice = computed(() => {
-    const p = props.product
-    for (const tier of p.price_tiers || [])
-        if (
-            quantity.value >= tier.min_qty &&
-            (!tier.max_qty || quantity.value <= tier.max_qty)
-        )
-            return tier.price
-    return p.format === 'wholesale' &&
-        !p.price_tiers?.length &&
-        quantity.value >= 10 &&
-        p.wholesale_price > 0
-        ? p.wholesale_price
-        : p.price
+// Quotes are quantity-specific: the best discount can differ between volume tiers.
+const quote = ref(props.product.pricing || null)
+const quoteError = ref('')
+const clock = ref(Date.now())
+let quoteSequence = 0
+let quoteTimer: ReturnType<typeof setTimeout> | undefined
+let expiryTimer: ReturnType<typeof setInterval> | undefined
+let quoteAbort: AbortController | undefined
+const currentQuote = computed(() => {
+    const value = quote.value
+    if (!value || value.quantity !== Number(quantity.value)) return null
+    if (
+        value.promotion_ends_at &&
+        Date.parse(value.promotion_ends_at) <= clock.value
+    )
+        return null
+    return value
 })
+const unitPrice = computed(() => currentQuote.value?.unit_price ?? null)
+async function refreshQuote() {
+    const sequence = ++quoteSequence
+    quoteAbort?.abort()
+    quoteAbort = new AbortController()
+    quoteError.value = ''
+    const qty = Number(quantity.value)
+    if (
+        !Number.isInteger(qty) ||
+        qty < (props.product.moq || 1) ||
+        qty > 1000000 ||
+        (props.product.stock >= 0 && qty > props.product.stock)
+    ) {
+        quote.value = null
+        quoteError.value =
+            'Enter an available whole quantity to see your price.'
+        return
+    }
+    try {
+        const response = await fetch(
+            '/products/' +
+                encodeURIComponent(props.product.id) +
+                '/price?quantity=' +
+                qty,
+            {
+                signal: quoteAbort.signal,
+                headers: { Accept: 'application/json' },
+                cache: 'no-store',
+            }
+        )
+        const body = await response.json()
+        if (sequence !== quoteSequence) return
+        if (!response.ok)
+            throw new Error(body.error || 'Unable to confirm this price.')
+        quote.value = body.pricing
+        clock.value = Date.now()
+    } catch (failure) {
+        if (
+            sequence !== quoteSequence ||
+            (failure instanceof Error && failure.name === 'AbortError')
+        )
+            return
+        quote.value = null
+        quoteError.value =
+            failure instanceof Error
+                ? failure.message
+                : 'Unable to confirm this price. Please retry.'
+    }
+}
+watch([quantity, () => props.product.id], () => {
+    ++quoteSequence
+    quoteAbort?.abort()
+    quote.value = null
+    quoteError.value = ''
+    if (quoteTimer) clearTimeout(quoteTimer)
+    quoteTimer = setTimeout(refreshQuote, 300)
+})
+onMounted(() => {
+    void refreshQuote()
+    let ticks = 0
+    expiryTimer = setInterval(() => {
+        clock.value = Date.now()
+        const expired =
+            quote.value?.promotion_ends_at &&
+            Date.parse(quote.value.promotion_ends_at) <= clock.value
+        if (expired) quote.value = null
+        if (expired || ++ticks % 30 === 0) void refreshQuote()
+    }, 1000)
+})
+onBeforeUnmount(() => {
+    ++quoteSequence
+    quoteAbort?.abort()
+    if (quoteTimer) clearTimeout(quoteTimer)
+    if (expiryTimer) clearInterval(expiryTimer)
+})
+
 watch(
     () => props.product.id,
     () => {
@@ -400,7 +540,7 @@ watch(
     }
 )
 function addToCart(e: Event) {
-    if (validate(e))
+    if (unitPrice.value !== null && validate(e))
         post('/cart/items', {
             product_id: props.product.id,
             quantity: quantity.value,
@@ -436,3 +576,29 @@ function submitOffer(e: Event) {
     )
 }
 </script>
+
+<style scoped>
+.detail-image-placeholder {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    width: 100%;
+    min-height: 360px;
+    color: var(--soko-muted);
+    background: var(--soko-paper, #f5f4ef);
+}
+.detail-image-placeholder svg {
+    width: 96px;
+    height: 96px;
+}
+.detail-image-disclosure {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.4rem;
+    background: var(--soko-paper, #f5f4ef);
+    color: var(--soko-ink);
+    font-size: 0.75rem;
+}
+</style>

@@ -45,10 +45,16 @@ func ValidateProduct(r *requests.CreateProductRequest) error {
 	if !validRegion[r.Region] {
 		return errors.New("invalid market region")
 	}
-	for _, raw := range []string{r.ImageUrl, r.DigitalDownloadUrl} {
+	if r.ShortDesc != nil && len(*r.ShortDesc) > 300 {
+		return errors.New("value proposition must be 300 characters or fewer")
+	}
+	if len(r.GalleryUrls) > 10 {
+		return errors.New("a gallery supports at most 10 images")
+	}
+	for _, raw := range append([]string{r.ImageUrl, r.DigitalDownloadUrl}, r.GalleryUrls...) {
 		if raw != "" {
 			u, err := url.Parse(raw)
-			if len(raw) > 2048 || err != nil || !((u.Scheme == "https" && u.Host != "") || (u.Scheme == "" && strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//"))) {
+			if len(raw) > 2048 || err != nil || u.User != nil || strings.ContainsAny(raw, "\r\n\\") || strings.Contains(u.Path, "..") || !((u.Scheme == "https" && u.Host != "") || (u.Scheme == "" && strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//"))) {
 				return errors.New("URLs must use HTTPS or a local absolute path")
 			}
 		}
@@ -74,7 +80,15 @@ func ApplyProductInput(p *models.Product, r *requests.CreateProductRequest) {
 	p.Category = strings.TrimSpace(r.Category)
 	p.SubCategory = r.SubCategory
 	p.Description = r.Description
-	p.ShortDesc = r.Description
+	if r.ShortDesc != nil {
+		p.ShortDesc = strings.TrimSpace(*r.ShortDesc)
+	}
+	if r.GalleryUrls != nil {
+		p.GalleryUrls = append([]string{}, r.GalleryUrls...)
+	}
+	if r.Featured != nil {
+		p.Featured = *r.Featured
+	}
 	p.Price = r.Price
 	p.WholesalePrice = r.WholesalePrice
 	p.MOQ = r.MOQ
@@ -108,7 +122,7 @@ func ApplyProductInput(p *models.Product, r *requests.CreateProductRequest) {
 	p.PrepareSave()
 }
 func (a *CreateProductAction) ExecuteFromRequest(r *requests.CreateProductRequest, u *models.User) (*models.Product, error) {
-	if !u.CanManageCatalog() {
+	if !u.HasPermission("products.create") {
 		return nil, errors.New("catalog access is restricted to suppliers and administrators")
 	}
 	if err := ValidateProduct(r); err != nil {

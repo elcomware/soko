@@ -1,0 +1,1 @@
+const e=["showcase","category_navigation","catalog","discovery","sourcing"],t=r=>!Array.isArray(r)||r.length!==e.length||new Set(r).size!==e.length||!r.every(n=>e.includes(n))?[...e]:[...r];export{t as n,e as s};

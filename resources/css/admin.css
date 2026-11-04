@@ -1,0 +1,355 @@
+/* Operational shell: same brand tokens, separate information architecture. */
+.admin-shell {
+    display: grid;
+    grid-template-columns: 244px minmax(0, 1fr);
+    min-height: 100vh;
+    background: var(--soko-canvas);
+    color: var(--soko-ink);
+}
+.admin-sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: auto;
+    background: var(--soko-navy);
+    color: var(--soko-on-primary, #fff);
+    padding: 28px 16px;
+    display: flex;
+    flex-direction: column;
+    border-right: 3px solid var(--soko-amber);
+}
+.admin-brand {
+    min-width: 0;
+    max-width: 100%;
+    display: grid;
+    gap: 10px;
+    padding: 0 14px 26px;
+    color: inherit;
+}
+.admin-brand .soko-brand {
+    min-width: 0;
+    max-width: 100%;
+    flex: 1;
+    color: inherit;
+}
+.admin-brand .soko-bag-mark {
+    flex: none;
+}
+.admin-brand .soko-brand-name,
+.admin-brand .soko-brand-name small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.admin-brand .admin-brand-caption {
+    flex: none;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.17em;
+    opacity: 0.7;
+    font-weight: 750;
+}
+.admin-navigation {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    flex: 1;
+}
+.admin-navigation nav {
+    display: grid;
+    gap: 4px;
+}
+.admin-navigation h2 {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: inherit;
+    opacity: 0.6;
+    padding: 0 14px;
+    margin: 0 0 6px;
+}
+.admin-navigation a {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 14px;
+    border-radius: var(--soko-radius);
+    font-size: 13px;
+    line-height: 1.5;
+    font-weight: 600;
+    color: inherit;
+    opacity: 0.82;
+}
+.admin-navigation a:hover {
+    background: #ffffff12;
+    opacity: 1;
+}
+.admin-navigation a.is-current {
+    background: var(--soko-surface);
+    color: var(--soko-navy);
+    opacity: 1;
+    font-weight: 800;
+}
+.admin-navigation svg {
+    width: 18px;
+    height: 18px;
+    flex: none;
+}
+.admin-sidebar-bottom {
+    display: grid;
+    border-top: 1px solid #ffffff25;
+    padding-top: 16px;
+    margin-top: auto;
+}
+.admin-stage {
+    min-width: 0;
+}
+.admin-topbar {
+    min-height: 80px;
+    padding: 16px 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    background: var(--soko-surface);
+    border-bottom: 1px solid var(--soko-line);
+}
+.admin-topbar nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--soko-muted);
+}
+.admin-topbar nav [aria-current] {
+    color: var(--soko-ink);
+    font-weight: 700;
+}
+.admin-actor {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+.admin-actor > span {
+    display: grid;
+    text-align: right;
+    font-size: 12px;
+}
+.admin-actor small {
+    color: var(--soko-muted);
+    font-size: 11px;
+}
+.admin-signout {
+    font-size: 12px;
+    border: 1px solid var(--soko-line);
+    padding: 8px 12px;
+    border-radius: var(--soko-radius);
+}
+.admin-content {
+    padding: 36px;
+    max-width: 1800px;
+    width: 100%;
+    margin-inline: auto;
+    outline: none;
+}
+.admin-content > .site-container,
+.admin-content > .workspace {
+    max-width: none;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+.admin-content > .workspace {
+    display: block;
+}
+.admin-content .workspace-heading {
+    margin-bottom: 28px;
+    align-items: flex-start;
+}
+.admin-content .workspace-heading h1 {
+    font-size: clamp(27px, 2.4vw, 38px);
+    letter-spacing: -0.035em;
+}
+.admin-content .workspace-heading p {
+    max-width: 70ch;
+}
+.admin-content .workspace-panel {
+    border-radius: var(--soko-radius);
+    padding: 28px;
+    background: var(--soko-surface);
+    border: 1px solid var(--soko-line);
+    box-shadow: none;
+}
+.admin-content .workspace-stats {
+    gap: 20px;
+}
+.admin-content .settings-page,
+.admin-content .merchandising-editor {
+    padding-block: 0;
+}
+.admin-content .settings-grid,
+.admin-content .editor-grid {
+    gap: 24px;
+}
+.admin-content table {
+    width: 100%;
+}
+.admin-menu-toggle {
+    display: none;
+}
+.admin-content .workspace-toolbar {
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.admin-content .workspace-table-wrap {
+    border-radius: var(--soko-radius);
+}
+.admin-content input,
+.admin-content select,
+.admin-content textarea {
+    scroll-margin-block: 100px;
+}
+.admin-content .workspace-form input,
+.admin-content .workspace-form select {
+    min-height: 44px;
+}
+@media (min-width: 1800px) {
+    .admin-content {
+        padding: 44px 52px;
+    }
+    .admin-shell {
+        grid-template-columns: 264px minmax(0, 1fr);
+    }
+}
+@media (max-width: 1050px) {
+    .admin-shell {
+        grid-template-columns: 210px minmax(0, 1fr);
+    }
+    .admin-content {
+        padding: 24px;
+    }
+    .admin-topbar {
+        padding-inline: 24px;
+    }
+    .admin-actor small {
+        display: none;
+    }
+    .admin-actor {
+        gap: 12px;
+    }
+}
+@media (max-width: 760px) {
+    .admin-shell {
+        display: block;
+    }
+    .admin-sidebar {
+        position: relative;
+        height: auto;
+        padding: 16px 20px;
+        border-right: 0;
+        border-bottom: 3px solid var(--soko-amber);
+    }
+    .admin-brand {
+        padding: 0;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+    }
+    .admin-brand svg {
+        max-width: 120px;
+    }
+    .admin-menu-toggle {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 16px;
+        font-size: 13px;
+        min-height: 44px;
+        padding: 8px 12px;
+        border: 1px solid #ffffff45;
+        border-radius: var(--soko-radius);
+        color: inherit;
+    }
+    .admin-navigation {
+        display: none;
+        margin-top: 22px;
+    }
+    .admin-navigation.is-open {
+        display: flex;
+    }
+    .admin-topbar {
+        padding: 14px 20px;
+        min-height: 64px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .admin-actor > span {
+        display: none;
+    }
+    .admin-content {
+        padding: 24px 16px;
+    }
+    .admin-content .workspace-panel {
+        padding: 20px 16px;
+    }
+    .admin-content .workspace-heading {
+        gap: 16px;
+    }
+    .admin-content .workspace-heading h1 {
+        font-size: 28px;
+    }
+    .admin-topbar nav {
+        flex-wrap: wrap;
+    }
+    .admin-content .settings-grid,
+    .admin-content .editor-grid {
+        grid-template-columns: 1fr;
+    }
+    .admin-content .permission-grid {
+        grid-template-columns: 1fr;
+    }
+    .admin-content .workspace-toolbar {
+        flex-wrap: wrap;
+    }
+}
+@media print {
+    .admin-sidebar,
+    .admin-topbar,
+    .admin-signout {
+        display: none;
+    }
+    .admin-shell {
+        display: block;
+    }
+    .admin-content {
+        padding: 0;
+        max-width: none;
+    }
+}
+
+.admin-brand .soko-brand-name {
+    color: var(--soko-on-primary, #fff);
+}
+.admin-brand .soko-brand-name small {
+    color: inherit;
+    opacity: 0.72;
+}
+.admin-brand .soko-bag-mark > path:first-child {
+    stroke: var(--soko-on-primary, #fff);
+}
+
+.admin-content .commerce-panel {
+    border-radius: var(--soko-radius);
+    border-color: var(--soko-line);
+    box-shadow: none;
+}
+.admin-content .permission-grid small {
+    font-size: 11px;
+    color: var(--soko-muted);
+    font-weight: 400;
+}
+.admin-content .settings-page input,
+.admin-content .settings-page select {
+    border-radius: var(--soko-radius);
+}

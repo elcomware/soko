@@ -12,3 +12,6 @@ public/hot
 *.log
 bootstrap/ssr
 *.sqlite
+
+# Product media are runtime uploads, not application source.
+/public/media/

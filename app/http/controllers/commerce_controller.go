@@ -2,16 +2,20 @@ package controllers
 
 import (
 	"elcomware/app/actions"
+	"elcomware/app/facades"
 	appmiddleware "elcomware/app/http/middleware"
+	"elcomware/app/models"
 	"elcomware/app/queries"
 	"elcomware/app/services"
 	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
 	"math"
 	"sort"
 	"strconv"
+	"time"
 )
 
 type CommerceController struct{}
@@ -32,11 +36,24 @@ func saveCart(ctx http.Context, cart map[string]int) {
 	b, _ := json.Marshal(cart)
 	ctx.Request().Session().Put("cart", string(b))
 }
+func checkoutToken(ctx http.Context) string {
+	token, _ := ctx.Request().Session().Get("checkout_token").(string)
+	if token == "" {
+		token = uuid.NewString()
+		ctx.Request().Session().Put("checkout_token", token)
+	}
+	return token
+}
 func CartSummary(ctx http.Context) map[string]any {
 	cart := cartFrom(ctx)
 	items := []map[string]any{}
 	issues := []string{}
 	var total float64
+	now := time.Now()
+	campaigns, campaignErr := queries.ActivePromotions(facades.Orm().Query(), now)
+	if campaignErr != nil {
+		issues = append(issues, "Current promotions could not be checked. Please refresh before checkout.")
+	}
 	ids := []string{}
 	for id := range cart {
 		ids = append(ids, id)
@@ -50,18 +67,19 @@ func CartSummary(ctx http.Context) map[string]any {
 			delete(cart, id)
 			continue
 		}
-		price, err := p.PriceFor(qty)
+		pricing, err := models.PriceProduct(p, qty, campaigns, now)
+		price := pricing.UnitPrice
 		if err != nil {
 			issues = append(issues, p.Title+": "+err.Error())
 			price = p.Price
 		}
 		line := math.Round(price*float64(qty)*100) / 100
-		items = append(items, map[string]any{"product_id": id, "quantity": qty, "product": p.Public(), "unit_price": price, "total_price": line})
+		items = append(items, map[string]any{"product_id": id, "quantity": qty, "product": p.Public(), "unit_price": price, "total_price": line, "pricing": pricing, "original_unit_price": pricing.OriginalUnitPrice, "discount_per_unit": pricing.DiscountPerUnit})
 		total += line
 	}
 	saveCart(ctx, cart)
 	total = math.Round(total*100) / 100
-	return map[string]any{"items": items, "subtotal": total, "total_amount": total, "currency": "USD", "issues": issues}
+	return map[string]any{"items": items, "subtotal": total, "total_amount": total, "currency": "USD", "issues": issues, "checkout_token": checkoutToken(ctx)}
 }
 func (c *CommerceController) Cart(ctx http.Context) http.Response {
 	currency := services.NewCurrencyService()
@@ -118,12 +136,16 @@ func (c *CommerceController) Checkout(ctx http.Context) http.Response {
 		}
 		cart = map[string]int{id: qty}
 	}
-	order, err := actions.NewExecuteCheckoutAction().ExecuteCart(cart, appmiddleware.CurrentUser(ctx))
+	order, err := actions.NewExecuteCheckoutAction().ExecuteCartWithToken(cart, appmiddleware.CurrentUser(ctx), ctx.Request().Input("checkout_token"))
 	if err != nil {
 		ctx.Request().Session().Flash("error", err.Error())
 		return ctx.Response().Redirect(http.StatusSeeOther, "/cart")
 	}
-	saveCart(ctx, map[string]int{})
+	// An old successful retry must not clear a newer cart built in another tab.
+	if token := ctx.Request().Input("checkout_token"); token == "" || token == checkoutToken(ctx) {
+		saveCart(ctx, map[string]int{})
+		ctx.Request().Session().Put("checkout_token", uuid.NewString())
+	}
 	ctx.Request().Session().Flash("success", "Order "+order.OrderNumber+" submitted. Payment has not been collected; fulfillment is pending.")
 	return ctx.Response().Redirect(http.StatusSeeOther, "/account?section=orders")
 }

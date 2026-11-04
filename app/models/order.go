@@ -12,6 +12,10 @@ const (
 )
 
 type OrderItem struct {
+	OriginalUnitPrice  float64     `json:"original_unit_price"`
+	DiscountPerUnit    float64     `json:"discount_per_unit"`
+	PromotionID        string      `gorm:"type:varchar(64)" json:"promotion_id,omitempty"`
+	PromotionName      string      `gorm:"type:varchar(120)" json:"promotion_name,omitempty"`
 	StockReserved      bool        `gorm:"type:boolean;default:false" json:"-"`
 	ID                 string      `gorm:"primaryKey;type:varchar(64)" json:"id"`
 	OrderID            string      `gorm:"type:varchar(64);index" json:"order_id"`

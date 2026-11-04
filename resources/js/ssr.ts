@@ -3,6 +3,7 @@ import createServer from '@inertiajs/vue3/server'
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, h, type DefineComponent } from 'vue'
 import Layout from './Layout.vue'
+import AdminLayout from './AdminLayout.vue'
 
 const pages = import.meta.glob<DefineComponent>('./Pages/**/*.vue')
 
@@ -12,7 +13,7 @@ createServer((page) =>
     createInertiaApp({
         page,
         render: renderToString,
-        title: (title) => (title ? `${title} · Soko` : 'Soko'),
+        title: (title) => title || 'Soko',
         resolve: (name) => {
             const resolved = pages[`./Pages/${name}.vue`]
             if (!resolved) {
@@ -21,7 +22,9 @@ createServer((page) =>
             return resolved().then((module) => {
                 const component = module.default
                 if (!component.layout) {
-                    component.layout = Layout
+                    component.layout = name.startsWith('Dashboard/')
+                        ? AdminLayout
+                        : Layout
                 }
                 return component
             })

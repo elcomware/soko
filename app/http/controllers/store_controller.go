@@ -1,7 +1,12 @@
 package controllers
 
 import (
+	"elcomware/app/facades"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/goravel/framework/contracts/http"
 	inertiafacades "github.com/goravel/inertia/facades"
@@ -54,24 +59,42 @@ func (s *StoreController) Index(ctx http.Context) http.Response {
 		return ctx.Response().String(http.StatusInternalServerError, "The catalog could not be loaded. Please try again.")
 	}
 	products = models.PublicProducts(products)
+	merchandising, _ := queries.LoadMerchandising()
+	resolvedMerchandising := queries.ResolveMerchandising(merchandising, products, time.Now().UTC())
 	stats := map[string]any{"total_products": len(products)}
 	currencies := s.currencyService.GetCurrencies()
 	regions := s.currencyService.GetRegions()
 	rfqs, _ := s.rfqService.GetOpenRfqs()
 
-	categories := []map[string]any{
-		{"id": "all", "name": "All Categories", "icon": "Layers", "count": len(products)},
-		{"id": "Industrial & Machinery", "name": "Industrial & Heavy CNC", "type": "physical", "icon": "Tool"},
-		{"id": "Electronics & Telecom", "name": "Datacenter & Networking", "type": "physical", "icon": "Wifi"},
-		{"id": "Digital Software", "name": "Cloud Software & SaaS", "type": "digital", "icon": "Cloud"},
-		{"id": "Digital Assets", "name": "AI Models & CAD Blueprints", "type": "digital", "icon": "Cpu"},
-		{"id": "Agriculture & Processing", "name": "Agri-Tech & Sorting Mills", "type": "physical", "icon": "Leaf"},
-		{"id": "Energy & Utilities", "name": "Commercial Energy & BESS", "type": "physical", "icon": "Zap"},
+	categories := []map[string]any{{"id": "all", "name": "All Categories", "icon": "Layers", "count": len(products)}}
+	var categoryRows []models.Product
+	if err := facades.Orm().Query().Select("category").Get(&categoryRows); err != nil {
+		return ctx.Response().String(503, "Catalog categories could not be loaded.")
+	}
+	categorySet := map[string]bool{}
+	for _, p := range categoryRows {
+		if strings.TrimSpace(p.Category) != "" {
+			categorySet[p.Category] = true
+		}
+	}
+	categoryIDs := make([]string, 0, len(categorySet))
+	for category := range categorySet {
+		categoryIDs = append(categoryIDs, category)
+	}
+	sort.Strings(categoryIDs)
+	friendly := map[string]string{"Industrial & Machinery": "Industrial & Heavy CNC", "Electronics & Telecom": "Datacenter & Networking", "Digital Software": "Cloud Software & SaaS", "Digital Assets": "AI Models & CAD Blueprints", "Agriculture & Processing": "Agri-Tech & Sorting Mills", "Energy & Utilities": "Commercial Energy & BESS"}
+	for _, category := range categoryIDs {
+		name := category
+		if label, ok := friendly[category]; ok {
+			name = label
+		}
+		categories = append(categories, map[string]any{"id": category, "name": name, "icon": "Layers"})
 	}
 
 	return inertiafacades.Inertia().Render(ctx, "Store/Index", map[string]any{
 		"products":          products,
-		"storefrontContent": queries.LoadStorefrontContent(),
+		"merchandising":     resolvedMerchandising,
+		"storefrontContent": map[string]string{"announcement": merchandising.Announcement},
 		"categories":        categories,
 		"currencies":        currencies,
 		"regions":           regions,
@@ -167,4 +190,27 @@ func (s *StoreController) CreateRfq(ctx http.Context) http.Response {
 
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise RFQ %s published to global suppliers! Suppliers can now submit quotations.", rfq.RfqNumber))
 	return ctx.Response().Redirect(http.StatusFound, "/#rfq")
+}
+
+// Price is a read-only quote; checkout always recalculates inside its transaction.
+func (s *StoreController) Price(ctx http.Context) http.Response {
+	ctx.Response().Header("Cache-Control", "no-store")
+	quantity, err := strconv.Atoi(ctx.Request().Query("quantity", "1"))
+	if err != nil || quantity < 1 || quantity > 1000000 {
+		return ctx.Response().Json(http.StatusUnprocessableEntity, map[string]any{"error": "Enter a whole quantity between 1 and 1,000,000."})
+	}
+	product, err := queries.NewProductQueries().FindByID(ctx.Request().Route("id"))
+	if err != nil || product == nil || product.ID == "" {
+		return ctx.Response().Json(http.StatusNotFound, map[string]any{"error": "Product not found."})
+	}
+	now := time.Now()
+	campaigns, err := queries.ActivePromotions(facades.Orm().Query(), now)
+	if err != nil {
+		return ctx.Response().Json(http.StatusServiceUnavailable, map[string]any{"error": "Pricing is temporarily unavailable. Please retry."})
+	}
+	price, err := models.PriceProduct(product, quantity, campaigns, now)
+	if err != nil {
+		return ctx.Response().Json(http.StatusUnprocessableEntity, map[string]any{"error": err.Error()})
+	}
+	return ctx.Response().Json(http.StatusOK, map[string]any{"pricing": price})
 }

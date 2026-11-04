@@ -27,7 +27,7 @@ export function useCatalogNavigation() {
     const visitCatalog = (changes: Record<string, string | undefined>) => {
         router.get('/', catalogQuery(changes), {
             preserveState: true,
-            preserveScroll: true,
+            preserveScroll: false,
         })
     }
     return { visitCatalog, catalogHref }

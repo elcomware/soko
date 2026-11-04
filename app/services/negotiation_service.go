@@ -12,7 +12,7 @@ func DecideOffer(id, status string, u *models.User) error {
 	if status != "accepted" && status != "declined" {
 		return errors.New("choose accepted or declined")
 	}
-	if !u.CanManageCatalog() {
+	if !u.HasPermission("offers.decide") {
 		return errors.New("access denied")
 	}
 	var offer models.Offer
@@ -23,7 +23,7 @@ func DecideOffer(id, status string, u *models.User) error {
 	if err := facades.Orm().Query().Where("id = ?", offer.ProductID).First(&p); err != nil {
 		return err
 	}
-	if offer.ID == "" || !u.CanManageProduct(&p) {
+	if offer.ID == "" || !u.Can("offers.decide", p.VendorID) {
 		return errors.New("offer not found or access denied")
 	}
 	result, err := facades.Orm().Query().Model(&models.Offer{}).Where("id = ? AND status = ?", id, models.OfferStatusPending).Update(map[string]any{"status": status, "updated_at": time.Now()})
@@ -44,7 +44,7 @@ func ResolveRfq(id, quoteID string, closeOnly bool, u *models.User) error {
 		if err := tx.Where("id = ?", id).First(&rfq); err != nil {
 			return err
 		}
-		if rfq.ID == "" || (rfq.BuyerID != u.ID && u.Role != models.RoleAdmin) {
+		if rfq.ID == "" || !u.Can(map[bool]string{true: "rfqs.close", false: "rfqs.award"}[closeOnly], rfq.BuyerID) {
 			return errors.New("request not found or access denied")
 		}
 		status := models.RfqStatusClosed

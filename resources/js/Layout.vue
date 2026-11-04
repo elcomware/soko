@@ -1,9 +1,10 @@
 <template>
     <div
         class="soko-app"
+        :style="brandTokens(brand)"
         :class="{ 'workspace-layout': page.component === 'Dashboard/Index' }"
     >
-        <Head :title="pageTitle" />
+        <Head :title="`${pageTitle} · ${brand.display_name}`" />
         <a href="#main-content" class="skip-link">Skip to content</a>
         <header class="site-header">
             <div class="utility-bar">
@@ -84,7 +85,7 @@
                     <button
                         type="submit"
                         class="search-submit"
-                        aria-label="Search Soko"
+                        aria-label="Search products"
                     >
                         <SokoIcon name="arrow" />
                     </button>
@@ -104,9 +105,10 @@
                     <template v-if="user"
                         ><Link
                             :href="
-                                user.role === 'buyer'
-                                    ? '/account'
-                                    : '/dashboard'
+                                (page.props.auth as any)?.capabilities
+                                    ?.workspaceAccess
+                                    ? '/dashboard'
+                                    : '/account'
                             "
                             class="account-link"
                             ><SokoIcon name="user" /><span>{{
@@ -152,36 +154,7 @@
                 </nav>
             </div>
         </header>
-        <div
-            v-if="flash.success || flash.error"
-            class="site-container flash-container"
-            aria-live="polite"
-        >
-            <div
-                v-if="flash.success"
-                role="status"
-                class="notice notice-success"
-            >
-                <SokoIcon name="check" /><span>{{ flash.success }}</span
-                ><button
-                    class="icon-button"
-                    aria-label="Dismiss success message"
-                    @click="dismissedSuccess = flash.success"
-                >
-                    <SokoIcon name="close" />
-                </button>
-            </div>
-            <div v-if="flash.error" role="alert" class="notice notice-error">
-                <span>{{ flash.error }}</span
-                ><button
-                    class="icon-button"
-                    aria-label="Dismiss error message"
-                    @click="dismissedError = flash.error"
-                >
-                    <SokoIcon name="close" />
-                </button>
-            </div>
-        </div>
+        <SharedFlashNotifications />
         <main id="main-content" class="site-main" tabindex="-1"><slot /></main>
         <footer class="site-footer">
             <div class="site-container">
@@ -198,7 +171,7 @@
                         >
                     </div>
                     <div>
-                        <h2>Explore Soko</h2>
+                        <h2>Explore {{ brand.display_name }}</h2>
                         <Link href="/">All products</Link
                         ><Link href="/?format=wholesale"
                             >Wholesale sourcing</Link
@@ -228,8 +201,8 @@
                 </div>
                 <div class="footer-bottom">
                     <span
-                        >© {{ new Date().getFullYear() }} Soko. Global commerce,
-                        connected.</span
+                        >© {{ new Date().getFullYear() }}
+                        {{ brand.display_name }}. {{ brand.tagline }}.</span
                     ><span>Wholesale · Retail · Digital</span>
                 </div>
             </div>
@@ -237,14 +210,20 @@
     </div>
 </template>
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3'
-import { computed, nextTick, ref, watch } from 'vue'
+import { Head, Link, usePage, router } from '@inertiajs/vue3'
+import { computed, nextTick, ref, watch, onBeforeUnmount } from 'vue'
 import SokoLogo from './components/SokoLogo.vue'
+import { createDebouncedSearch } from '@/design/debouncedSearch'
+import SharedFlashNotifications from '@/components/SharedFlashNotifications.vue'
+import { normalizeBrand, brandTokens, type BrandSettings } from '@/design/brand'
 import '../css/commerce.css'
 import SokoIcon from './components/SokoIcon.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useCatalogNavigation } from '@/composables/useCatalogNavigation'
 const page = usePage()
+const brand = computed(() =>
+    normalizeBrand(page.props.brandSettings as Partial<BrandSettings>)
+)
 const pageTitle = computed(() => {
     const titles: Record<string, string> = {
         'Store/Index': 'Global marketplace',
@@ -262,30 +241,52 @@ const { selectedCurrency, selectedRegion, currencies, setRegion } =
     useCurrency()
 const { visitCatalog, catalogHref } = useCatalogNavigation()
 const user = computed(() => (page.props.auth as any)?.user)
-const dismissedSuccess = ref('')
-const dismissedError = ref('')
-const flash = computed(() => {
-    const value = (page.props.flash as Record<string, string>) || {}
-    return {
-        success: value.success === dismissedSuccess.value ? '' : value.success,
-        error: value.error === dismissedError.value ? '' : value.error,
-    }
-})
-watch(
-    () => page.props.flash,
-    () => {
-        dismissedSuccess.value = ''
-        dismissedError.value = ''
-    }
-)
 const searchQuery = ref(String(page.props.searchQuery || ''))
 const searchInput = ref<HTMLInputElement | null>(null)
+let syncingSearch = false
+let launchingSearch = false
+const searchController = createDebouncedSearch({
+    initial: searchQuery.value,
+    delay: 350,
+    visit: (query, request) => {
+        launchingSearch = true
+        router.get(
+            catalogHref({ q: query }),
+            {},
+            {
+                preserveState: true,
+                preserveScroll: false,
+                onCancelToken: (token) =>
+                    request.setCancel(() => token.cancel()),
+            }
+        )
+        launchingSearch = false
+    },
+})
 watch(
-    () => page.props.searchQuery,
+    searchQuery,
     (query) => {
-        searchQuery.value = String(query || '')
+        if (!syncingSearch) searchController.update(query)
+    },
+    { flush: 'sync' }
+)
+watch(
+    () => page.url,
+    () => {
+        const query = String(page.props.searchQuery || '')
+        searchController.sync(query)
+        syncingSearch = true
+        searchQuery.value = query
+        syncingSearch = false
     }
 )
+const stopSearchOnNavigation = router.on('before', () => {
+    if (!launchingSearch) searchController.cancel()
+})
+onBeforeUnmount(() => {
+    searchController.cancel()
+    stopSearchOnNavigation()
+})
 watch(
     () => page.props.activeRegion,
     (region) => {
@@ -316,10 +317,9 @@ const navigation = [
 const isActive = (format: string) =>
     page.component === 'Store/Index' &&
     String(page.props.activeFormat || 'all') === format
-const applySearch = () => visitCatalog({ q: searchQuery.value.trim() })
+const applySearch = () => searchController.submit(searchQuery.value)
 const clearSearch = async () => {
     searchQuery.value = ''
-    applySearch()
     await nextTick()
     searchInput.value?.focus()
 }

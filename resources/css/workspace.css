@@ -9,7 +9,7 @@
 .workspace-sidebar {
     color: #e7edf3;
     background: var(--soko-navy);
-    border-radius: 12px;
+    border-radius: var(--soko-radius);
     overflow: hidden;
     position: sticky;
     top: 24px;
@@ -31,7 +31,7 @@
     background: var(--soko-amber);
     font-size: 15px;
     font-weight: 800;
-    border-radius: 8px;
+    border-radius: var(--soko-radius);
     margin-bottom: 7px;
 }
 .workspace-identity strong {
@@ -53,7 +53,7 @@
     align-items: center;
     gap: 10px;
     padding: 11px 12px;
-    border-radius: 5px;
+    border-radius: var(--soko-radius);
     font-size: 12px;
     color: #d4e0e9;
     min-height: 44px;
@@ -85,7 +85,7 @@
     min-width: 22px;
     padding: 1px 5px;
     text-align: center;
-    border-radius: 4px;
+    border-radius: var(--soko-radius);
 }
 .workspace-secondary {
     border-top: 1px solid #ffffff20;
@@ -134,7 +134,7 @@
     padding: 20px 16px;
     gap: 12px;
     border: 1px solid var(--soko-line);
-    border-radius: 8px;
+    border-radius: var(--soko-radius);
     background: var(--soko-surface);
 }
 .workspace-metrics article > span {
@@ -158,7 +158,7 @@
 .workspace-panel {
     background: var(--soko-surface);
     border: 1px solid var(--soko-line);
-    border-radius: 8px;
+    border-radius: var(--soko-radius);
     padding: 24px;
     margin-bottom: 20px;
 }
@@ -261,7 +261,7 @@
     display: inline-flex;
     align-items: center;
     border: 1px solid var(--soko-line);
-    border-radius: 4px;
+    border-radius: var(--soko-radius);
     background: var(--soko-canvas);
     color: var(--soko-muted);
     font-size: 10px;
@@ -298,7 +298,7 @@
     color: var(--soko-success);
     border: 1px solid #b9d9c6;
     padding: 12px 16px;
-    border-radius: 6px;
+    border-radius: var(--soko-radius);
     margin-bottom: 20px;
     font-size: 12px;
 }
@@ -322,7 +322,7 @@
     align-items: center;
     gap: 10px;
     border: 1px solid #bac7d1;
-    border-radius: 6px;
+    border-radius: var(--soko-radius);
     padding: 0 12px;
     min-height: 44px;
     background: var(--soko-surface);
@@ -422,7 +422,7 @@
 .workspace-product-placeholder {
     width: 48px;
     height: 48px;
-    border-radius: 5px;
+    border-radius: var(--soko-radius);
     object-fit: cover;
     flex-shrink: 0;
     border: 1px solid var(--soko-line);
@@ -461,7 +461,7 @@
     align-items: center;
     padding: 5px 8px;
     border: 1px solid var(--soko-line);
-    border-radius: 4px;
+    border-radius: var(--soko-radius);
     font-size: 10px;
     background: var(--soko-surface);
     color: var(--soko-navy);
@@ -549,7 +549,7 @@
     flex-basis: 100%;
     background: var(--soko-canvas);
     padding: 12px;
-    border-radius: 5px;
+    border-radius: var(--soko-radius);
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -571,7 +571,7 @@
     margin-top: 24px;
     padding: 18px;
     background: var(--soko-canvas);
-    border-radius: 6px;
+    border-radius: var(--soko-radius);
 }
 .workspace-facts dt {
     color: var(--soko-muted);
@@ -622,7 +622,7 @@
     width: 100%;
     color: var(--soko-ink);
     border: 1px solid #bac7d1;
-    border-radius: 6px;
+    border-radius: var(--soko-radius);
     padding: 10px 12px;
     background: var(--soko-surface);
 }
@@ -639,7 +639,7 @@
     gap: 16px;
     border: 1px solid var(--soko-line);
     padding: 18px;
-    border-radius: 6px;
+    border-radius: var(--soko-radius);
 }
 .workspace-fieldset legend {
     font-size: 12px;
@@ -681,7 +681,7 @@
 .workspace-quote-context {
     padding: 16px;
     background: var(--soko-canvas);
-    border-radius: 6px;
+    border-radius: var(--soko-radius);
     font-size: 13px;
 }
 .workspace-quote-context p {
@@ -708,7 +708,7 @@
 .auth-scene {
     position: relative;
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: var(--soko-radius);
     min-height: 580px;
     color: white;
     display: flex;
@@ -840,7 +840,7 @@
     font-size: 11px;
     color: var(--soko-navy);
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--soko-radius);
     background: transparent;
     font-weight: 700;
 }
@@ -895,7 +895,7 @@
     text-align: left;
     background: white;
     border: 1px solid var(--soko-line);
-    border-radius: 5px;
+    border-radius: var(--soko-radius);
     padding: 12px;
 }
 .auth-demos button:hover {
@@ -945,7 +945,7 @@
     gap: 8px;
     padding: 14px 12px;
     border: 1px solid var(--soko-line);
-    border-radius: 6px;
+    border-radius: var(--soko-radius);
     background: var(--soko-surface);
     cursor: pointer;
 }
@@ -1075,7 +1075,7 @@
         justify-self: center;
         background: white;
         border: 1px solid var(--soko-line);
-        border-radius: 8px;
+        border-radius: var(--soko-radius);
         padding: 32px;
     }
 }
@@ -1197,7 +1197,7 @@
     font-size: 11px;
     padding: 12px;
     background: var(--soko-canvas);
-    border-radius: 5px;
+    border-radius: var(--soko-radius);
 }
 
 .workspace-tier-editor legend span {

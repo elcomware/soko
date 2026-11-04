@@ -25,8 +25,12 @@ func (c *ContentController) Save(ctx http.Context) http.Response {
 	if uid == nil {
 		return ctx.Response().Redirect(http.StatusFound, "/login")
 	}
-	if err := facades.Orm().Query().Where("id = ?", fmt.Sprint(uid)).First(&actor); err != nil || actor.ID == "" || actor.Role != models.RoleAdmin {
+	if err := facades.Orm().Query().Where("id = ?", fmt.Sprint(uid)).First(&actor); err != nil || actor.ID == "" {
 		return ctx.Response().String(http.StatusForbidden, "Only administrators can update storefront content.")
+	}
+	queries.HydrateAccess(&actor)
+	if !actor.HasPermission("content.update") {
+		return ctx.Response().String(http.StatusForbidden, "Content update permission is required.")
 	}
 	values := make(map[string]string, 6)
 	for key := range queries.DefaultStorefrontContent() {

@@ -6,10 +6,10 @@ import (
 )
 
 func (u *User) CanManageCatalog() bool {
-	return u != nil && (u.Role == RoleAdmin || u.Role == RoleMerchant)
+	return u.HasPermission("products.create") || u.HasPermission("products.update")
 }
 func (u *User) CanManageProduct(p *Product) bool {
-	return u.CanManageCatalog() && p != nil && (u.Role == RoleAdmin || p.VendorID == u.ID)
+	return p != nil && u.Can("products.update", p.VendorID)
 }
 func (p *Product) IsDigital() bool {
 	return (p.Type != TypePhysical && p.Type != "") || p.Format == FormatDigital

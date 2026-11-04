@@ -2,6 +2,7 @@ import { createApp, h, type DefineComponent } from 'vue'
 import { createInertiaApp } from '@inertiajs/vue3'
 import '../css/app.css'
 import Layout from './Layout.vue'
+import AdminLayout from './AdminLayout.vue'
 
 const pages = import.meta.glob<DefineComponent>('./Pages/**/*.vue')
 
@@ -16,7 +17,7 @@ createInertiaApp({
         // Whether the NProgress spinner will be shown...
         showSpinner: false,
     },
-    title: (title) => (title ? `${title} · Soko` : 'Soko'),
+    title: (title) => title || 'Soko',
     resolve: (name) => {
         const page = pages[`./Pages/${name}.vue`]
         if (!page) {
@@ -25,7 +26,9 @@ createInertiaApp({
         return page().then((module) => {
             const component = module.default
             if (!component.layout) {
-                component.layout = Layout
+                component.layout = name.startsWith('Dashboard/')
+                    ? AdminLayout
+                    : Layout
             }
             return component
         })

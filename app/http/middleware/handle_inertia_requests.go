@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"elcomware/app/queries"
 	"encoding/json"
 	"github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/facades"
@@ -31,6 +32,9 @@ func HandleInertiaRequests() http.Middleware {
 // session flash are already shared by the package; add your own props here. It runs
 // once per request and is available on the client via usePage().props.
 func share(ctx http.Context) map[string]any {
+	u := CurrentUser(ctx)
+	merchandising, _ := queries.LoadMerchandising()
+	caps := map[string]bool{"workspaceAccess": u.CanAccessWorkspace()}
 	var flashSuccess, flashError any
 	if ctx.Request().HasSession() {
 		flashSuccess = ctx.Request().Session().Get("success")
@@ -38,13 +42,17 @@ func share(ctx http.Context) map[string]any {
 	}
 
 	return map[string]any{
+		"workspaceNavigation": WorkspaceNavigation(u),
 		// Available on every page as usePage().props.appName.
-		"appName":   facades.Config().GetString("app.name"),
-		"cartCount": cartCount(ctx),
+		"appName":           facades.Config().GetString("app.name"),
+		"cartCount":         cartCount(ctx),
+		"brandSettings":     queries.LoadBrandSettings(),
+		"storefrontContent": map[string]string{"announcement": merchandising.Announcement},
 		// The auth object, available on every page as usePage().props.auth.user
 		// (nil when nobody is logged in). Mirrors the Inertia/Laravel convention.
 		"auth": map[string]any{
-			"user": authUser(ctx),
+			"user":         u,
+			"capabilities": caps,
 		},
 		"flash": map[string]any{
 			"success": flashSuccess,

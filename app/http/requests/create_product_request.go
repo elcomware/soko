@@ -6,6 +6,9 @@ import (
 )
 
 type CreateProductRequest struct {
+	ShortDesc            *string            `form:"short_desc" json:"short_desc"`
+	GalleryUrls          []string           `form:"gallery_urls" json:"gallery_urls"`
+	Featured             *bool              `form:"featured" json:"featured"`
 	PriceTiers           []models.PriceTier `form:"price_tiers" json:"price_tiers"`
 	Version              string             `form:"version" json:"version"`
 	Title                string             `form:"title" json:"title"`

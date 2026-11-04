@@ -42,7 +42,7 @@ The existing API returns all matches without pagination. This slice preserves th
 
 Product forms in the refreshed storefront use novalidate and validity metadata without browser validation bubbles. The first invalid field is focused, marked aria-invalid and associated with the error summary. Server validation remains authoritative. Submits are guarded against duplicates; validation/server failures keep entered data. The UI does not add automatic retries for non-idempotent mutations. A transport interruption retains Inertia's existing error handling and requires deliberate retry.
 
-Native dialog supplies the top layer, focus containment, inert background, Escape and focus restoration. SokoDialog adds an accessible title and body scroll lock. Only one sourcing/offer/order modal is expected at a time. Flash notices remain persistent until dismissed or a new navigation replaces them. Authentication, role and ownership checks belong to the server. No payment provider or escrow integration is represented by this UI.
+Native dialog supplies the top layer, focus containment, inert background, Escape and focus restoration. SokoDialog adds an accessible title and body scroll lock. Only one sourcing/offer/order modal is expected at a time. Flash notices remain persistent until dismissed or a new navigation replaces them. Authentication, permission and ownership checks belong to the server. No payment provider or escrow integration is represented by this UI.
 
 ## Migration and verification
 
@@ -50,11 +50,11 @@ The current extension covers all active product routes: storefront, product deta
 
 Verify changed sources with Prettier, vue-tsc, a production Vite build, the existing Go feature test, and the premium strict audit. Review desktop and narrow storefronts, search/no-results/clear, combined filters, currency changes, native popup keyboard behavior, modal Escape/focus and invalid forms. Compare the shared chrome on login and product detail. Actual checkout and mutation success must be exercised only in an explicitly disposable test workflow; this slice's visual review does not claim payment or deployment readiness.
 
-## Immersive discovery iteration
+## Product-led discovery · 2026-11-04
 
-Hero stories are explicit buttons, not an auto-advancing carousel. Selection updates copy, imagery and a real matching catalog preview; filtering is committed only through the corresponding CTA. Sector links retain committed sibling filters through useCatalogNavigation. No live activity, transaction counts or supplier guarantees are simulated.
+Hero selection is an explicit button, not an auto-advancing carousel. It changes the active real product and its image/value statement. Actual active promotions lead the hero; other featured products are merchant-selected, not claimed best sellers. Category tiles commit filters via existing URL navigation. Search and active filters suppress the discovery hero so results remain primary. Product cards route to details; the compact sourcing utility remains available for missing catalog items. Empty, image-failure and no-result recovery are retained.
 
-Pause motion is a page-wide opt-out from spatial effects, retained across SPA navigation by useStorefrontMotion.ts; system reduced-motion takes precedence and disables the toggle with an explicit label. Ambient hero motion pauses when offscreen. Scroll reveals never hide content, and cleanup disconnects observers and removes media-query listeners. Buyer requests now use articles and definition lists, preserving the source data and /dashboard quotation destination.
+Native button/link semantics, visible focus and reduced-motion overrides apply. Product imagery is contained rather than cropping the item out of frame. Offers expire visually using a one-second client clock, and the backend re-prices authoritatively; browser clock precision is not a financial guarantee. No fake scarcity, transaction counts or supplier guarantees are rendered.
 
 ## Customer and operations contracts · 2026-11-04
 
@@ -64,3 +64,11 @@ Pause motion is a page-wide opt-out from spatial effects, retained across SPA na
 - Admin-only `/dashboard/content` stores bounded plain text for the public hero and sourcing content. Inertia flash feedback reports persistence outcomes.
 - Customer forms share `useMarketplaceForm.ts`; storefront and workspace helpers follow the same first-invalid focus, labelled inline error, duplicate guard and preserved-values behavior. Only the active dialog renders its error summary.
 - Product sort is committed in the catalog URL and operates on current server-filtered listings. No server pagination, live exchange rate feed, payment collection, shipping integration or password recovery is claimed.
+
+## Unified operations navigation · 2026-11-04
+
+- `AdminLayout.vue` is the canonical shell for every `Dashboard/*` page, including promotions, media, merchandising and settings. `Layout.vue` remains the buyer/storefront shell. Both client and SSR use the same route-family decision.
+- Server `WorkspaceNavigation` is the source for capability-aware grouped links. `media.create` and `media.settings.manage` independently admit appropriate media staff. Navigation does not grant access; controllers/services remain authoritative.
+- Per-record `recordCapabilities` represent effective ownership and lifecycle gates for product editing/deletion/media, offers and RFQs. Missing entries deny UI actions. General access to a list never implies permission to modify every row.
+- Settings has explicit brand, access and payment destinations. Payment administrators select a real permitted merchant account rather than typing an opaque ID. Saved/rejected form redirects retain their panel and merchant context; optimistic versions advance only on confirmed success.
+- Native selects retain operating-system keyboard/popup behavior. Shared dialogs own destructive confirmations. SharedFlashNotifications owns non-blocking success/error notification presentation; inline errors retain correction context. No live payment capability is implied by operational navigation.

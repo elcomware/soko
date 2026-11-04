@@ -15,7 +15,7 @@ type SubmitRfqQuoteAction struct{}
 
 func NewSubmitRfqQuoteAction() *SubmitRfqQuoteAction { return &SubmitRfqQuoteAction{} }
 func (a *SubmitRfqQuoteAction) ExecuteFromRequest(r *requests.SubmitRfqQuoteRequest, u *models.User) (*models.RfqQuote, error) {
-	if !u.CanManageCatalog() {
+	if !u.HasPermission("rfqs.quote") {
 		return nil, errors.New("only suppliers and administrators may quote")
 	}
 	if r.UnitPrice <= 0 || r.UnitPrice > 1e12 || math.IsNaN(r.UnitPrice) || math.IsInf(r.UnitPrice, 0) || r.LeadTimeDays < 0 || r.LeadTimeDays > 3650 || len(r.Notes) > 5000 {

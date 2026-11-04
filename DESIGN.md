@@ -45,7 +45,7 @@ components:
 
 Soko connects business buyers with industrial equipment, digital products and suppliers. README.md describes four commerce formats: wholesale, direct retail, negotiated offers and digital delivery. This is a product marketplace, not a promotional landing page. Make discovery, comparison and sourcing feel familiar and dependable.
 
-The visual reference is an international trade desk: precise typography, clear documents, navy ink and a small amber navigation accent. The signature is a full-width, viewport-filling trade scene with three manually selected sourcing, digital and negotiation stories. This evolves the accepted first design in response to the user’s request for a more immersive, living storefront. Keep everyday product controls quiet. Avoid competing neon badges, animated status dots, oversized claims and comparisons to unrelated marketplaces.
+The visual reference is a mature, product-led marketplace: navy ink, amber accents, generous product imagery and precise commerce controls. The signature hero presents a real catalog product, supported by two actual product picks, followed by category browsing and benefit-led discovery cards. Promotional prices appear only when the server supplies a current, genuine promotion. Never invent best-seller rankings, reference prices or buyer activity. Corporate storytelling is not the storefront's primary task.
 
 The interface currently uses English for a global audience. Currency selection changes display currency through the existing useCurrency composable; it does not change settlement policy. No Japanese interface or Japan-specific policy is introduced by this slice.
 
@@ -99,3 +99,22 @@ The active route family now includes storefront, product details, cart, private 
 Cart prices are recalculated on the server. Currency selection is an indicative display conversion; orders record USD amounts. Order submission records a pending request, with no payment collection or automatic digital entitlement. Offer acceptance and quotation awards describe their actual recorded state. Do not render seeded ratings as a real reviews system or imply escrow, delivery guarantees or verification beyond actual account data.
 
 Admin content editing changes the first hero heading, accent, description, announcement and sourcing section. Stored plain text is rendered with Vue interpolation. Default content remains available before the additive content migration. See docs/end-to-end-plan.md for implementation and verification scope.
+
+
+## Product-first identity revision · 2026-11-04
+
+The current storefront supersedes the older immersive-story section below. `resources/css/shop.css` owns its page-specific semantic styles. Shared merchant tokens in `resources/js/design/brand.ts` map validated brand settings into CSS variables on the application shell. The body/display typeface choices are bundled Manrope or system fonts, not an exclusive custom typeface. The bespoke container/S mark is an SVG component; merchant display name and tagline are data, not baked into artwork.
+
+`SokoIcon` reads 159 distinct original SVG paths from `resources/js/design/icons.ts`, inherits currentColor and configurable `--soko-icon-stroke`, and accepts accessible labels and sizes. `SokoFlag` adds 20 national symbols with fixed flag colors; `SokoCurrencySymbol` adds 23 currency labels. These are scalable vector symbols, not photorealistic illustrations. National colors intentionally do not follow brand tokens. `SokoIconGallery` is the canonical searchable admin preview.
+
+Product cards lead with merchant-supplied short descriptions, falling back to actual description or a neutral exploration prompt. They link to product details for prices, quantity and options. Hero offers show original and current server prices, campaign name and explicit UTC expiry; without a valid promotion they present the product without a discount. The browser removes expired offer presentation using its local clock; server checkout remains authoritative. No auto-rotating carousel or forced motion is introduced.
+
+### User feedback refinement · 2026-11-04
+
+The original amber rounded-square lowercase-s identity is restored and refined, replacing the container/hexagon mark above. Merchant color and typography tokens still control it. Discovery copy is now deliberately bounded (88-character card snippets; 120-character hero), with full content reserved for product details. The main hero is a manually operated slide carousel with arrows, keyboard navigation and horizontal swipe. The two side-pick cards are retained; no auto-advance is introduced.
+
+## Unified operational workspace · 2026-11-04
+
+All `Dashboard/*` pages use `AdminLayout.vue`, consistently in client and SSR resolution. Buyers retain `Layout.vue` for the storefront and their account. Merchants and platform staff share the operational shell; effective permission grants, not role labels, determine navigation and actions. The same Soko logo, bundled typography, brand colors, semantic tokens and `--soko-radius` apply throughout. The difference is arrangement: a persistent navy navigation rail with restrained amber edge, quiet white account header and spacious fluid work area. No storefront search, category controls, shopping cart or storefront footer is inserted into admin screens.
+
+`resources/css/admin.css` owns workspace shell geometry only, consuming the shared brand tokens. At narrow widths the navigation becomes an accessible inline disclosure rather than an overlay, so there is no hidden modal focus trap. Page content retains natural document scrolling, while genuine comparison tables may scroll horizontally. All admin pages inherit one `SharedFlashNotifications.vue` instance; recoverable form errors remain inline as well.

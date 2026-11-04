@@ -3,6 +3,7 @@ package middleware
 import (
 	"elcomware/app/facades"
 	"elcomware/app/models"
+	"elcomware/app/queries"
 	"github.com/goravel/framework/contracts/http"
 )
 
@@ -18,6 +19,7 @@ func CurrentUser(ctx http.Context) *models.User {
 	if err := facades.Orm().Query().Where("id = ?", id).First(&user); err != nil || user.ID == "" {
 		return nil
 	}
+	queries.HydrateAccess(&user)
 	return &user
 }
 

@@ -45,7 +45,7 @@ func CancelOrder(id string, actor *models.User) error {
 		if err := tx.Where("id = ?", id).First(&order); err != nil {
 			return err
 		}
-		if order.ID == "" || (order.UserID != actor.ID && actor.Role != models.RoleAdmin) {
+		if order.ID == "" || !actor.Can("orders.cancel", order.UserID) {
 			return errors.New("order not found or access denied")
 		}
 		result, err := tx.Model(&models.Order{}).Where("id = ? AND status = ?", id, models.OrderStatusPending).Update(map[string]any{"status": models.OrderStatusCancelled, "updated_at": time.Now()})

@@ -16,5 +16,10 @@ func Migrations() []schema.Migration {
 		&migrations.M20240101000005CreateOffersTable{},
 		&migrations.M20261103000001CreateStorefrontContents{},
 		&migrations.M20261104000001AddStockReservedToOrderItems{},
+		&migrations.M20261104000003CreateAccessSettings{},
+		&migrations.M20261104000004CreatePromotions{},
+		&migrations.M20261104000020CreateProductMedia{},
+		&migrations.M20261104000030CreateTestPaymentLedger{},
+		&migrations.M20261104000031CreateMerchandising{},
 	}
 }

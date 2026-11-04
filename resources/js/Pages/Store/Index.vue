@@ -1,699 +1,800 @@
 <template>
-    <Head title="Global marketplace" />
     <div
         ref="storefrontElement"
-        class="storefront immersive-storefront"
-        :class="{ 'motion-disabled': !motionEnabled || prefersReducedMotion }"
+        class="storefront product-first-storefront"
+        :class="{ 'has-showcase': showHero || sideProducts.length }"
     >
-        <section
-            ref="heroElement"
-            class="immersive-hero"
-            :class="{
-                'ambient-paused':
-                    !motionEnabled || prefersReducedMotion || !heroVisible,
-            }"
-            aria-labelledby="storefront-title"
-        >
-            <div class="immersive-visual" aria-hidden="true">
-                <img
-                    v-for="(story, index) in stories"
-                    :key="story.id"
-                    :src="story.image"
-                    alt=""
-                    width="1400"
-                    height="934"
-                    :fetchpriority="index === 0 ? 'high' : 'auto'"
-                    class="immersive-backdrop"
-                    :class="{ 'is-active': activeStory === index }"
-                />
-            </div>
-            <div class="immersive-shade" aria-hidden="true"></div>
-            <svg
-                class="trade-route"
-                viewBox="0 0 1000 600"
-                fill="none"
-                aria-hidden="true"
-            >
-                <path class="route-track" d="M 340 530 Q 510 190 950 170" />
-                <path class="route-flow" d="M 340 530 Q 510 190 950 170" />
-                <circle cx="340" cy="530" r="5" />
-                <circle cx="950" cy="170" r="5" />
-            </svg>
-            <div class="site-container immersive-inner">
-                <div class="immersive-copy">
-                    <p class="immersive-eyebrow">
-                        <span></span> Soko / {{ currentStory.label }}
-                    </p>
-                    <div
-                        class="story-announcement"
-                        aria-live="polite"
-                        aria-atomic="true"
-                    >
-                        <div class="story-copy" :key="currentStory.id">
-                            <h1 id="storefront-title">
-                                {{ currentStory.headline }}<br /><span>{{
-                                    currentStory.accent
-                                }}</span>
-                            </h1>
-                            <p class="immersive-description">
-                                {{ currentStory.description }}
-                            </p>
-                        </div>
-                    </div>
-                    <div class="immersive-actions">
-                        <a
-                            v-if="activeStory === 0"
-                            href="#catalog"
-                            class="button button-amber"
-                            >Explore the marketplace <SokoIcon name="arrow"
-                        /></a>
-                        <Link
-                            v-else
-                            :href="
-                                catalogHref({
-                                    format: currentStory.format,
-                                    category: 'all',
-                                }) + '#catalog'
-                            "
-                            class="button button-amber"
-                            >{{ currentStory.action }} <SokoIcon name="arrow"
-                        /></Link>
-                        <button
-                            class="immersive-secondary"
-                            @click="openRfqModal"
-                        >
-                            Request a quotation <SokoIcon name="arrow" />
-                        </button>
-                    </div>
-                </div>
-                <Link
-                    v-if="featuredProduct"
-                    :href="'/products/' + featuredProduct.id"
-                    class="hero-market-card"
+        <template v-for="sectionKey in sectionOrder" :key="sectionKey">
+            <template v-if="sectionKey === 'showcase'"
+                ><section
+                    v-if="showHero || sideProducts.length"
+                    class="shop-hero site-container"
+                    data-storefront-section="showcase"
+                    :class="{
+                        'hero-without-side': !sideProducts.length,
+                        'hero-without-main': !showHero,
+                    }"
+                    :aria-labelledby="showHero ? 'storefront-title' : undefined"
+                    :aria-label="
+                        !showHero
+                            ? merchandising.hero_side?.title ||
+                              'Featured product picks'
+                            : undefined
+                    "
                 >
-                    <span class="market-card-label"
-                        ><SokoIcon name="layers" /> In the marketplace</span
-                    >
-                    <div class="market-card-product">
-                        <img
-                            :src="featuredProduct.image_url"
-                            alt=""
-                            width="64"
-                            height="64"
-                        />
-                        <div>
-                            <span>{{ featuredProduct.category }}</span>
-                            <h2>{{ featuredProduct.title }}</h2>
-                        </div>
-                    </div>
-                    <div class="market-card-bottom">
-                        <div>
-                            <strong>{{
-                                formatPrice(featuredProduct.price)
-                            }}</strong
-                            ><small
-                                >Min. {{ featuredProduct.moq }}
-                                {{
-                                    featuredProduct.moq === 1 ? 'unit' : 'units'
-                                }}
-                                · {{ featuredProduct.vendor_country }}</small
-                            >
-                        </div>
-                        <span class="market-card-arrow"
-                            ><SokoIcon name="arrow"
-                        /></span>
-                    </div>
-                </Link>
-                <div class="hero-bottom-bar">
                     <div
-                        class="story-selectors"
-                        role="group"
-                        aria-label="Explore marketplace stories"
+                        v-if="showHero"
+                        class="shop-hero-main"
+                        role="region"
+                        aria-roledescription="carousel"
+                        aria-label="Featured products"
+                        tabindex="0"
+                        @keydown="onHeroKeydown"
+                        @touchstart.passive="onHeroTouchStart"
+                        @touchend="onHeroTouchEnd"
+                        @click.capture="onHeroClick"
                     >
-                        <button
-                            v-for="(story, index) in stories"
-                            :key="story.id"
-                            :aria-pressed="activeStory === index"
-                            @click="activeStory = index"
-                        >
-                            <SokoIcon :name="story.icon" /><span
-                                ><strong>{{ story.shortLabel }}</strong
-                                ><small>{{ story.caption }}</small></span
-                            >
-                        </button>
-                    </div>
-                    <button
-                        class="motion-toggle"
-                        :aria-pressed="!motionEnabled || prefersReducedMotion"
-                        :disabled="prefersReducedMotion"
-                        @click="motionEnabled = !motionEnabled"
-                    >
-                        <SokoIcon
-                            :name="
-                                motionEnabled && !prefersReducedMotion
-                                    ? 'pause'
-                                    : 'play'
-                            "
-                        />{{
-                            prefersReducedMotion
-                                ? 'Reduced motion'
-                                : motionEnabled
-                                  ? 'Pause motion'
-                                  : 'Enable motion'
-                        }}
-                    </button>
-                </div>
-            </div>
-            <a
-                href="#discover"
-                class="hero-scroll-link"
-                aria-label="Discover more on Soko"
-                ><span>More possibilities below</span><SokoIcon name="down"
-            /></a>
-        </section>
-
-        <div class="storefront-benefits">
-            <div
-                class="site-container benefit-strip"
-                aria-label="Ways to trade on Soko"
-            >
-                <div class="benefit">
-                    <SokoIcon name="layers" />
-                    <div>
-                        <strong>Value that scales</strong
-                        ><span>Discover wholesale volume pricing</span>
-                    </div>
-                </div>
-                <div class="benefit">
-                    <SokoIcon name="globe" />
-                    <div>
-                        <strong>Your business. Your terms.</strong
-                        ><span>Buy directly or start a conversation</span>
-                    </div>
-                </div>
-                <div class="benefit">
-                    <SokoIcon name="bolt" />
-                    <div>
-                        <strong>Tools for your digital business.</strong
-                        ><span>Software, licenses and business assets</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="site-container storefront-sections">
-            <section
-                id="discover"
-                class="sector-section reveal-item"
-                aria-labelledby="sector-title"
-            >
-                <div class="section-heading">
-                    <div>
-                        <p class="eyebrow">
-                            Different worlds. Shared ambition.
-                        </p>
-                        <h2 id="sector-title">Built for your next move.</h2>
-                    </div>
-                    <a href="#catalog" class="section-explore"
-                        >Explore all products <SokoIcon name="arrow"
-                    /></a>
-                </div>
-                <div class="sector-grid">
-                    <Link
-                        v-for="sector in sectors"
-                        :key="sector.title"
-                        :href="catalogHref(sector.query) + '#catalog'"
-                        class="sector-card"
-                        ><img
-                            :src="sector.image"
-                            alt=""
-                            width="800"
-                            height="600"
-                            loading="lazy" />
-                        <div class="sector-card-shade"></div>
-                        <div class="sector-card-content">
-                            <SokoIcon :name="sector.icon" />
-                            <p>{{ sector.caption }}</p>
-                            <h3>{{ sector.title }}</h3>
-                            <span class="sector-card-action"
-                                >Explore sector <SokoIcon name="arrow"
-                            /></span></div
-                    ></Link>
-                </div>
-            </section>
-
-            <section
-                id="catalog"
-                class="catalog-section reveal-item"
-                aria-labelledby="catalog-title"
-            >
-                <div class="section-heading">
-                    <div>
-                        <p class="eyebrow">Find your next opportunity</p>
-                        <h2 id="catalog-title">Products for your business</h2>
-                    </div>
-                    <span class="catalog-count" role="status"
-                        >{{ productList.length }}
-                        {{ productList.length === 1 ? 'product' : 'products' }}
-                        to explore</span
-                    ><button
-                        class="button button-outline mobile-filter-button"
-                        :aria-expanded="filtersOpen"
-                        aria-controls="catalog-filters"
-                        @click="filtersOpen = !filtersOpen"
-                    >
-                        <SokoIcon name="filter" /> Filters
-                    </button>
-                </div>
-                <div class="catalog-layout">
-                    <aside
-                        id="catalog-filters"
-                        class="catalog-filters"
-                        :class="{ 'is-expanded': filtersOpen }"
-                        aria-label="Product filters"
-                    >
-                        <div class="filter-heading">
-                            <h3>Refine your search</h3>
-                            <button class="text-button" @click="resetFilters">
-                                Reset all
-                            </button>
-                        </div>
-                        <div class="filter-group">
-                            <h4 class="filter-label">Categories</h4>
-                            <button
-                                v-for="category in categories"
-                                :key="category.id"
-                                class="category-option"
-                                :aria-pressed="activeCategory === category.id"
-                                @click="setCategory(category.id)"
-                            >
-                                <SokoIcon
-                                    :name="
-                                        categoryIcons[category.id] || 'layers'
-                                    "
-                                /><span>{{ category.name }}</span>
-                            </button>
-                        </div>
-                        <div class="filter-group">
-                            <h4 class="filter-label">Condition</h4>
-                            <button
-                                v-for="condition in conditions"
-                                :key="condition.id"
-                                class="condition-option"
-                                :aria-pressed="activeCondition === condition.id"
-                                @click="setCondition(condition.id)"
-                            >
-                                <span
-                                    class="condition-mark"
-                                    aria-hidden="true"
-                                ></span
-                                >{{ condition.label }}
-                            </button>
-                        </div>
-                        <div class="filter-group">
-                            <label for="sourcing-region" class="filter-label"
-                                >Sourcing region</label
-                            ><select
-                                id="sourcing-region"
-                                v-model="filterRegion"
-                                class="filter-select"
-                                @change="onFilterRegionChange"
-                            >
-                                <option value="global">All regions</option>
-                                <option
-                                    v-for="region in regions.filter(
-                                        (region) => region.id !== 'global'
-                                    )"
-                                    :key="region.id"
-                                    :value="region.id"
-                                >
-                                    {{ region.name }}
-                                </option>
-                            </select>
-                        </div>
-                        <div class="filter-help">
-                            <SokoIcon name="document" />
-                            <h4>Have something specific in mind?</h4>
-                            <p>
-                                Share your requirements and let suppliers come
-                                to you.
-                            </p>
-                            <button class="text-button" @click="openRfqModal">
-                                Post a sourcing request
-                                <SokoIcon name="arrow" />
-                            </button>
-                        </div>
-                    </aside>
-                    <div class="catalog-results">
-                        <p
-                            v-if="
-                                formError && !offerModalProduct && !showRfqModal
-                            "
-                            class="form-error"
-                            role="alert"
-                        >
-                            {{ formError }}
-                        </p>
-                        <div class="catalog-toolbar">
+                        <Transition name="product-slide" mode="out-in">
                             <div
-                                class="format-tabs"
+                                :key="heroProduct.id"
+                                class="shop-hero-slide"
                                 role="group"
-                                aria-label="Product format"
+                                aria-roledescription="slide"
+                                :aria-label="`${heroIndex + 1} of ${heroProducts.length}: ${heroProduct.title}`"
                             >
-                                <button
-                                    v-for="format in formats"
-                                    :key="format.id"
-                                    :aria-pressed="activeFormat === format.id"
-                                    @click="setFormat(format.id)"
-                                >
-                                    {{ format.label }}
-                                </button>
-                            </div>
-                            <label class="catalog-sort"
-                                ><span class="sr-only">Sort products</span
-                                ><select
-                                    :value="sortOrder"
-                                    @change="
-                                        visitCatalog({
-                                            sort: (
-                                                $event.target as HTMLSelectElement
-                                            ).value,
-                                        })
-                                    "
-                                >
-                                    <option value="newest">
-                                        Newest listings
-                                    </option>
-                                    <option value="price_asc">
-                                        Price: low to high
-                                    </option>
-                                    <option value="price_desc">
-                                        Price: high to low
-                                    </option>
-                                    <option value="title">Product name</option>
-                                </select></label
-                            ><span class="result-currency"
-                                >Prices in {{ activeCurrency.code }}</span
-                            >
-                        </div>
-                        <div
-                            v-if="productList.length === 0"
-                            class="empty-state"
-                            role="status"
-                        >
-                            <SokoIcon name="search" />
-                            <h3>No matching products</h3>
-                            <p>
-                                {{
-                                    searchQuery
-                                        ? `We couldn’t find results for “${searchQuery}”. Try another search or adjust your filters.`
-                                        : 'Try a different category, condition or sourcing region.'
-                                }}
-                            </p>
-                            <button
-                                class="button button-navy"
-                                @click="resetFilters"
-                            >
-                                Clear search and filters
-                            </button>
-                        </div>
-                        <div v-else class="product-grid">
-                            <article
-                                v-for="product in productList"
-                                :key="product.id"
-                                class="product-card"
-                            >
-                                <Link
-                                    :href="'/products/' + product.id"
-                                    class="product-image-link"
-                                    :class="{
-                                        'image-missing': missingImages.has(
-                                            product.id
-                                        ),
-                                    }"
-                                    :aria-label="'View ' + product.title"
-                                    ><img
-                                        :src="product.image_url"
-                                        :alt="product.title"
-                                        loading="lazy"
-                                        width="480"
-                                        height="330"
-                                        @error="missingImages.add(product.id)"
-                                    /><span
-                                        class="image-fallback"
-                                        aria-hidden="true"
+                                <div class="shop-hero-copy">
+                                    <span class="shop-kicker"
                                         ><SokoIcon
                                             :name="
-                                                product.type === 'physical'
-                                                    ? 'box'
-                                                    : 'cloud'
-                                            " /></span
-                                    ><span class="product-format">{{
-                                        formatLabel(product.format)
-                                    }}</span></Link
-                                >
-                                <div class="product-body">
-                                    <p class="product-category">
-                                        {{ product.category }}
-                                    </p>
-                                    <h3>
-                                        <Link
-                                            :href="'/products/' + product.id"
-                                            >{{ product.title }}</Link
-                                        >
-                                    </h3>
-                                    <div class="supplier-line">
-                                        <SokoIcon
-                                            v-if="product.vendor_verified"
-                                            name="shield"
-                                        /><span :title="product.vendor_name">{{
-                                            product.vendor_name
+                                                hasPromotion(heroProduct)
+                                                    ? 'tag'
+                                                    : 'store'
+                                            "
+                                        />{{
+                                            hasPromotion(heroProduct)
+                                                ? heroProduct.pricing
+                                                      .promotion_name
+                                                : merchandising.hero?.title ||
+                                                  'Discover in the shop'
                                         }}</span
-                                        ><span
-                                            v-if="product.vendor_verified"
-                                            class="sr-only"
-                                            >Verified supplier</span
-                                        >
-                                    </div>
-                                    <div class="product-meta">
-                                        <span>{{ product.vendor_country }}</span
-                                        ><span
-                                            v-if="product.condition !== 'new'"
-                                            >·
-                                            {{
-                                                product.condition === 'open_box'
-                                                    ? 'Open box'
-                                                    : 'Refurbished'
-                                            }}</span
-                                        >
-                                    </div>
-                                    <div class="product-price">
-                                        {{ formatPrice(product.price) }}
+                                    >
+                                    <h1 id="storefront-title">
+                                        {{ heroProduct.title }}
+                                    </h1>
+                                    <p class="shop-hero-value">
+                                        {{ productTeaser(heroProduct, 88) }}
+                                    </p>
+                                    <div
+                                        v-if="hasPromotion(heroProduct)"
+                                        class="shop-deal-price"
+                                    >
+                                        <del>{{
+                                            formatPrice(
+                                                heroProduct.pricing
+                                                    .original_unit_price
+                                            )
+                                        }}</del>
+                                        <strong>{{
+                                            formatPrice(
+                                                heroProduct.pricing.unit_price
+                                            )
+                                        }}</strong>
+                                        <span class="sale-badge">{{
+                                            savingsLabel(heroProduct)
+                                        }}</span>
                                         <small
-                                            >/
+                                            v-if="
+                                                heroProduct.pricing
+                                                    .promotion_ends_at
+                                            "
+                                            >Ends
                                             {{
-                                                product.type === 'physical'
-                                                    ? 'unit'
-                                                    : 'license'
+                                                campaignEnd(
+                                                    heroProduct.pricing
+                                                        .promotion_ends_at
+                                                )
                                             }}</small
                                         >
                                     </div>
-                                    <p class="product-moq">
-                                        Minimum order: {{ product.moq }}
-                                        {{
-                                            product.moq === 1 ? 'unit' : 'units'
-                                        }}
+                                    <p v-else class="shop-hero-context">
+                                        {{ heroProduct.category }}
+                                        <span>·</span>
+                                        {{ formatLabel(heroProduct.format) }}
                                     </p>
-                                    <dl
-                                        v-if="product.price_tiers?.length"
-                                        class="price-tiers"
-                                        aria-label="Volume pricing"
+                                    <Link
+                                        :href="'/products/' + heroProduct.id"
+                                        class="button button-navy shop-discover-button"
+                                        >Discover this product
+                                        <SokoIcon name="arrow"
+                                    /></Link>
+                                    <a href="#catalog" class="shop-all-link"
+                                        >Browse all products</a
                                     >
-                                        <div
-                                            v-for="(
-                                                tier, index
-                                            ) in product.price_tiers.slice(
-                                                0,
-                                                3
-                                            )"
-                                            :key="index"
-                                        >
-                                            <dt>
-                                                {{
-                                                    tier.max_qty &&
-                                                    tier.max_qty < 999
-                                                        ? `${tier.min_qty}–${tier.max_qty}`
-                                                        : `${tier.min_qty}+`
-                                                }}
-                                                units
-                                            </dt>
-                                            <dd>
-                                                {{ formatPrice(tier.price) }}
-                                            </dd>
-                                        </div>
-                                    </dl>
-                                    <div class="product-actions">
+                                </div>
+                                <Link
+                                    :href="'/products/' + heroProduct.id"
+                                    class="shop-hero-visual"
+                                    :aria-label="'Explore ' + heroProduct.title"
+                                >
+                                    <img
+                                        v-if="
+                                            productImage(heroProduct) &&
+                                            !missingImages.has(heroProduct.id)
+                                        "
+                                        :src="productImage(heroProduct)"
+                                        :alt="heroProduct.title"
+                                        width="720"
+                                        height="600"
+                                        fetchpriority="high"
+                                        @error="
+                                            missingImages.add(heroProduct.id)
+                                        "
+                                    />
+                                    <div v-else class="shop-image-placeholder">
+                                        <SokoIcon
+                                            :name="
+                                                heroProduct.type === 'physical'
+                                                    ? 'box'
+                                                    : 'cloud'
+                                            "
+                                            :size="96"
+                                        /><span>Product image unavailable</span>
+                                    </div>
+                                    <span class="shop-visual-caption">{{
+                                        isIllustrativeImage(heroProduct)
+                                            ? 'Illustrative stock image · ' +
+                                              heroProduct.vendor_name
+                                            : heroProduct.vendor_name
+                                    }}</span>
+                                </Link>
+                            </div>
+                        </Transition>
+                        <div
+                            v-if="heroProducts.length > 1"
+                            class="shop-carousel-controls"
+                        >
+                            <button
+                                type="button"
+                                aria-label="Previous featured product"
+                                @click="moveHero(-1)"
+                            >
+                                <SokoIcon
+                                    name="chevron"
+                                    class="carousel-previous"
+                                />
+                            </button>
+                            <span aria-live="polite" aria-atomic="true"
+                                >{{ heroIndex + 1 }} /
+                                {{ heroProducts.length }}</span
+                            >
+                            <button
+                                type="button"
+                                aria-label="Next featured product"
+                                @click="moveHero(1)"
+                            >
+                                <SokoIcon name="chevron" />
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        v-if="sideProducts.length"
+                        class="shop-side-picks"
+                        role="region"
+                        :aria-label="
+                            merchandising.hero_side?.title ||
+                            'More product picks'
+                        "
+                    >
+                        <article
+                            v-for="product in sideProducts"
+                            :key="product.id"
+                            class="shop-side-product-card"
+                        >
+                            <Link
+                                :href="'/products/' + product.id"
+                                class="side-product-image"
+                                :aria-label="'View ' + product.title"
+                            >
+                                <img
+                                    v-if="
+                                        productImage(product) &&
+                                        !missingImages.has(product.id)
+                                    "
+                                    :src="productImage(product)"
+                                    :alt="product.title"
+                                    @error="missingImages.add(product.id)"
+                                />
+                                <SokoIcon v-else name="box" :size="48" />
+                                <small v-if="isIllustrativeImage(product)"
+                                    >Illustrative stock image</small
+                                >
+                            </Link>
+                            <div class="side-product-body">
+                                <span
+                                    v-for="badge in productBadges(
+                                        product,
+                                        promotionClock
+                                    ).slice(0, 1)"
+                                    :key="badge.tone"
+                                    class="product-state-badge"
+                                    :class="'badge-' + badge.tone"
+                                    >{{ badge.label }}</span
+                                >
+                                <h2>
+                                    <Link
+                                        :href="'/products/' + product.id"
+                                        :title="product.title"
+                                        >{{ product.title }}</Link
+                                    >
+                                </h2>
+                                <p>{{ productTeaser(product, 44) }}</p>
+                                <ProductCardFacts
+                                    :product="product"
+                                    :settings="footerSettings"
+                                    :format-price="formatPrice"
+                                    :now="promotionClock"
+                                    :paused="
+                                        footerPaused || footerReducedMotion
+                                    "
+                                />
+                                <Link
+                                    :href="'/products/' + product.id"
+                                    class="shop-pick-action"
+                                    >Explore product <SokoIcon name="arrow"
+                                /></Link>
+                            </div>
+                        </article>
+                    </div></section
+            ></template>
+            <div
+                v-else-if="
+                    sectionKey === 'category_navigation' &&
+                    merchandising.category_navigation?.enabled !== false
+                "
+                class="site-container storefront-sections shop-sections storefront-block"
+                :data-storefront-section="sectionKey"
+            >
+                <section
+                    v-if="merchandising.category_navigation?.enabled !== false"
+                    id="discover"
+                    class="shop-categories"
+                    aria-labelledby="category-title"
+                >
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">Find what you need</p>
+                            <h2 id="category-title">
+                                {{
+                                    merchandising.category_navigation?.title ||
+                                    'Shop by category'
+                                }}
+                            </h2>
+                        </div>
+                    </div>
+                    <div class="category-rail-frame">
+                        <button
+                            type="button"
+                            class="category-rail-arrow"
+                            aria-label="Previous categories"
+                            aria-controls="soko-category-rail"
+                            :disabled="!categoryBoundary.previous"
+                            @click="scrollCategories(-1)"
+                        >
+                            <SokoIcon
+                                name="chevron"
+                                class="carousel-previous"
+                            />
+                        </button>
+                        <div
+                            :ref="setCategoryScroller"
+                            id="soko-category-rail"
+                            @scroll.passive="updateCategoryBoundary"
+                            @keydown="onCategoryKeydown"
+                            class="shop-category-grid"
+                            tabindex="0"
+                            aria-label="Browse product categories"
+                        >
+                            <Link
+                                v-for="category in categories.filter(
+                                    (item) => item.id !== 'all'
+                                )"
+                                :key="category.id"
+                                :href="catalogHref({ category: category.id })"
+                                class="shop-category-tile"
+                                :aria-current="
+                                    activeCategory === category.id
+                                        ? 'page'
+                                        : undefined
+                                "
+                            >
+                                <span class="shop-category-symbol"
+                                    ><SokoCommerceIllustration
+                                        :name="
+                                            categoryScenes[category.id] ||
+                                            'storefront'
+                                        "
+                                        :size="72" /></span
+                                ><span>{{ category.name }}</span>
+                            </Link>
+                        </div>
+                        <button
+                            type="button"
+                            class="category-rail-arrow"
+                            aria-label="Next categories"
+                            aria-controls="soko-category-rail"
+                            :disabled="!categoryBoundary.next"
+                            @click="scrollCategories(1)"
+                        >
+                            <SokoIcon name="chevron" />
+                        </button>
+                    </div>
+                </section>
+            </div>
+            <div
+                v-else-if="sectionKey === 'catalog'"
+                class="site-container storefront-sections shop-sections storefront-block"
+                :data-storefront-section="sectionKey"
+            >
+                <section
+                    id="catalog"
+                    class="catalog-section reveal-item"
+                    aria-labelledby="catalog-title"
+                >
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">Explore the collection</p>
+                            <h2 id="catalog-title">
+                                {{
+                                    searchQuery
+                                        ? `Results for “${searchQuery}”`
+                                        : activeCategory !== 'all'
+                                          ? activeCategory
+                                          : 'Find your next essential'
+                                }}
+                            </h2>
+                        </div>
+                        <span class="catalog-count" role="status"
+                            >{{ productList.length }}
+                            {{
+                                productList.length === 1
+                                    ? 'product'
+                                    : 'products'
+                            }}
+                            to explore</span
+                        ><button
+                            class="button button-outline mobile-filter-button"
+                            :aria-expanded="filtersOpen"
+                            aria-controls="catalog-filters"
+                            @click="filtersOpen = !filtersOpen"
+                        >
+                            <SokoIcon name="filter" /> Filters
+                        </button>
+                    </div>
+                    <div class="catalog-layout">
+                        <aside
+                            id="catalog-filters"
+                            class="catalog-filters"
+                            :class="{ 'is-expanded': filtersOpen }"
+                            aria-label="Product filters"
+                        >
+                            <div class="filter-heading">
+                                <h3>Refine your search</h3>
+                                <button
+                                    class="text-button"
+                                    @click="resetFilters"
+                                >
+                                    Reset all
+                                </button>
+                            </div>
+                            <div class="filter-group">
+                                <h4 class="filter-label">Categories</h4>
+                                <button
+                                    v-for="category in categories"
+                                    :key="category.id"
+                                    class="category-option"
+                                    :aria-pressed="
+                                        activeCategory === category.id
+                                    "
+                                    @click="setCategory(category.id)"
+                                >
+                                    <SokoIcon
+                                        :name="
+                                            categoryIcons[category.id] ||
+                                            'layers'
+                                        "
+                                    /><span>{{ category.name }}</span>
+                                </button>
+                            </div>
+                            <div class="filter-group">
+                                <h4 class="filter-label">Condition</h4>
+                                <button
+                                    v-for="condition in conditions"
+                                    :key="condition.id"
+                                    class="condition-option"
+                                    :aria-pressed="
+                                        activeCondition === condition.id
+                                    "
+                                    @click="setCondition(condition.id)"
+                                >
+                                    <span
+                                        class="condition-mark"
+                                        aria-hidden="true"
+                                    ></span
+                                    >{{ condition.label }}
+                                </button>
+                            </div>
+                            <div class="filter-group">
+                                <label
+                                    for="sourcing-region"
+                                    class="filter-label"
+                                    >Sourcing region</label
+                                ><select
+                                    id="sourcing-region"
+                                    v-model="filterRegion"
+                                    class="filter-select"
+                                    @change="onFilterRegionChange"
+                                >
+                                    <option value="global">All regions</option>
+                                    <option
+                                        v-for="region in regions.filter(
+                                            (region) => region.id !== 'global'
+                                        )"
+                                        :key="region.id"
+                                        :value="region.id"
+                                    >
+                                        {{ region.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="filter-help">
+                                <SokoIcon name="document" />
+                                <h4>Have something specific in mind?</h4>
+                                <p>
+                                    Share your requirements and let suppliers
+                                    come to you.
+                                </p>
+                                <button
+                                    class="text-button"
+                                    @click="openRfqModal"
+                                >
+                                    Post a sourcing request
+                                    <SokoIcon name="arrow" />
+                                </button>
+                            </div>
+                        </aside>
+                        <div class="catalog-results">
+                            <p
+                                v-if="
+                                    formError &&
+                                    !offerModalProduct &&
+                                    !showRfqModal
+                                "
+                                class="form-error"
+                                role="alert"
+                            >
+                                {{ formError }}
+                            </p>
+                            <button
+                                v-if="
+                                    footerConfig.mode === 'rotate' &&
+                                    !footerReducedMotion
+                                "
+                                type="button"
+                                class="card-details-toggle"
+                                :aria-pressed="footerPaused"
+                                @click="footerPaused = !footerPaused"
+                            >
+                                {{
+                                    footerPaused
+                                        ? 'Resume rotating details'
+                                        : 'Pause rotation · show all details'
+                                }}
+                            </button>
+                            <div class="catalog-toolbar">
+                                <div
+                                    class="format-tabs"
+                                    role="group"
+                                    aria-label="Product format"
+                                >
+                                    <button
+                                        v-for="format in formats"
+                                        :key="format.id"
+                                        :aria-pressed="
+                                            activeFormat === format.id
+                                        "
+                                        @click="setFormat(format.id)"
+                                    >
+                                        {{ format.label }}
+                                    </button>
+                                </div>
+                                <label class="catalog-sort"
+                                    ><span class="sr-only">Sort products</span
+                                    ><select
+                                        :value="sortOrder"
+                                        @change="
+                                            visitCatalog({
+                                                sort: (
+                                                    $event.target as HTMLSelectElement
+                                                ).value,
+                                            })
+                                        "
+                                    >
+                                        <option value="newest">
+                                            Newest listings
+                                        </option>
+                                        <option value="price_asc">
+                                            Price: low to high
+                                        </option>
+                                        <option value="price_desc">
+                                            Price: high to low
+                                        </option>
+                                        <option value="title">
+                                            Product name
+                                        </option>
+                                    </select></label
+                                ><span class="result-currency"
+                                    >Prices in {{ activeCurrency.code }}</span
+                                >
+                            </div>
+                            <div
+                                v-if="productList.length === 0"
+                                class="empty-state"
+                                role="status"
+                            >
+                                <SokoIcon name="search" />
+                                <h3>No matching products</h3>
+                                <p>
+                                    {{
+                                        searchQuery
+                                            ? `We couldn’t find results for “${searchQuery}”. Try another search or adjust your filters.`
+                                            : 'Try a different category, condition or sourcing region.'
+                                    }}
+                                </p>
+                                <button
+                                    class="button button-navy"
+                                    @click="resetFilters"
+                                >
+                                    Clear search and filters
+                                </button>
+                            </div>
+                            <div v-else class="product-grid">
+                                <article
+                                    v-for="product in productList"
+                                    :key="product.id"
+                                    class="product-card"
+                                >
+                                    <div class="product-card-media">
                                         <Link
                                             :href="'/products/' + product.id"
-                                            class="button button-subtle"
-                                            >View details
-                                            <SokoIcon name="arrow" /></Link
-                                        ><button
-                                            v-if="product.accepts_offers"
-                                            class="button button-navy"
-                                            @click="openOfferModal(product)"
-                                        >
-                                            Make an offer</button
-                                        ><button
-                                            v-else
-                                            class="button button-navy"
-                                            :disabled="
-                                                submitting ||
-                                                product.stock === 0
+                                            class="product-image-link"
+                                            :class="{
+                                                'image-missing':
+                                                    !productImage(product) ||
+                                                    missingImages.has(
+                                                        product.id
+                                                    ),
+                                            }"
+                                            :aria-label="
+                                                'View ' + product.title
                                             "
-                                            @click="openOrderModal(product)"
+                                            ><img
+                                                v-if="productImage(product)"
+                                                :src="productImage(product)"
+                                                :alt="product.title"
+                                                loading="lazy"
+                                                width="480"
+                                                height="330"
+                                                @error="
+                                                    missingImages.add(
+                                                        product.id
+                                                    )
+                                                " /><span
+                                                class="image-fallback"
+                                                aria-hidden="true"
+                                                ><SokoIcon
+                                                    :name="
+                                                        product.type ===
+                                                        'physical'
+                                                            ? 'box'
+                                                            : 'cloud'
+                                                    " /></span
+                                        ></Link>
+                                        <div
+                                            v-if="
+                                                productBadges(
+                                                    product,
+                                                    promotionClock
+                                                ).length
+                                            "
+                                            class="product-card-labels"
+                                            aria-label="Product labels"
                                         >
-                                            {{
-                                                product.type === 'physical'
-                                                    ? 'Add to cart'
-                                                    : 'Add to cart'
-                                            }}
-                                        </button>
+                                            <span
+                                                v-for="badge in productBadges(
+                                                    product,
+                                                    promotionClock
+                                                )"
+                                                :key="badge.tone"
+                                                class="product-state-badge"
+                                                :class="'badge-' + badge.tone"
+                                                :title="badge.label"
+                                                >{{ badge.label }}</span
+                                            >
+                                        </div>
+                                        <span
+                                            v-if="isIllustrativeImage(product)"
+                                            class="product-stock-disclosure"
+                                            >Illustrative stock image</span
+                                        >
                                     </div>
-                                </div>
-                            </article>
+                                    <div
+                                        class="product-body"
+                                        :class="{
+                                            'has-boundary-badges':
+                                                productBadges(
+                                                    product,
+                                                    promotionClock
+                                                ).length,
+                                        }"
+                                    >
+                                        <p class="product-category">
+                                            {{ product.category }}
+                                        </p>
+                                        <h3>
+                                            <Link
+                                                :href="
+                                                    '/products/' + product.id
+                                                "
+                                                :title="product.title"
+                                                >{{ product.title }}</Link
+                                            >
+                                        </h3>
+                                        <p class="product-value">
+                                            {{ productTeaser(product, 72) }}
+                                        </p>
+                                        <div class="product-discovery-meta">
+                                            <span>{{
+                                                product.vendor_name
+                                            }}</span
+                                            ><span
+                                                v-if="
+                                                    product.condition !== 'new'
+                                                "
+                                                >{{
+                                                    product.condition ===
+                                                    'open_box'
+                                                        ? 'Open box'
+                                                        : 'Refurbished'
+                                                }}</span
+                                            >
+                                        </div>
+                                        <ProductCardFacts
+                                            :product="product"
+                                            :settings="footerSettings"
+                                            :format-price="formatPrice"
+                                            :now="promotionClock"
+                                            :paused="
+                                                footerPaused ||
+                                                footerReducedMotion
+                                            "
+                                        />
+                                        <div class="product-discovery-actions">
+                                            <Link
+                                                :href="
+                                                    '/products/' + product.id
+                                                "
+                                                class="product-discover-link"
+                                                >Explore product
+                                                <SokoIcon name="arrow"
+                                            /></Link>
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </section>
-
-            <section
-                class="sourcing-studio reveal-item"
-                aria-labelledby="sourcing-banner-title"
+                </section>
+            </div>
+            <div
+                v-else-if="
+                    sectionKey === 'discovery' &&
+                    digitalProducts.length > 0 &&
+                    merchandising.discovery?.enabled !== false
+                "
+                class="site-container storefront-sections shop-sections storefront-block"
+                :data-storefront-section="sectionKey"
             >
-                <div class="sourcing-studio-copy">
-                    <p class="eyebrow">From possibility to specification</p>
-                    <h2 id="sourcing-banner-title">
-                        {{
-                            storefrontContent?.sourcing_heading ??
-                            'Your next big thing starts with a brief.'
-                        }}
-                    </h2>
-                    <p>
-                        {{
-                            storefrontContent?.sourcing_description ??
-                            'Some needs don’t fit a search box. Share your specifications and give suppliers a clear place to start.'
-                        }}
-                    </p>
-                    <button class="button button-amber" @click="openRfqModal">
-                        Create a sourcing request <SokoIcon name="arrow" />
-                    </button>
-                </div>
-                <div class="sourcing-studio-steps">
-                    <div>
-                        <span>01</span>
+                <section
+                    v-if="
+                        digitalProducts.length &&
+                        merchandising.discovery?.enabled !== false
+                    "
+                    class="shop-digital-shelf"
+                    aria-labelledby="digital-shelf-title"
+                >
+                    <div class="section-heading">
                         <div>
-                            <h3>Tell your story</h3>
-                            <p>What do you need to source?</p>
+                            <p class="eyebrow">Software & digital products</p>
+                            <h2 id="digital-shelf-title">
+                                {{
+                                    merchandising.discovery?.title ||
+                                    'Equip your digital workspace'
+                                }}
+                            </h2>
                         </div>
-                        <SokoIcon name="document" />
+                        <Link
+                            :href="catalogHref({ format: 'digital' })"
+                            class="section-explore"
+                            >Shop digital <SokoIcon name="arrow"
+                        /></Link>
                     </div>
-                    <div>
-                        <span>02</span>
-                        <div>
-                            <h3>Define the details</h3>
-                            <p>Quantity, destination and specifications.</p>
-                        </div>
-                        <SokoIcon name="filter" />
+                    <div class="shop-digital-grid">
+                        <Link
+                            v-for="product in digitalProducts"
+                            :key="product.id"
+                            :href="'/products/' + product.id"
+                            class="shop-digital-card"
+                            ><img
+                                v-if="
+                                    productImage(product) &&
+                                    !missingImages.has(product.id)
+                                "
+                                :src="productImage(product)"
+                                :alt="product.title"
+                                width="400"
+                                height="260"
+                                loading="lazy"
+                                @error="
+                                    missingImages.add(product.id)
+                                " /><SokoIcon v-else name="cloud" :size="64" />
+                            <div>
+                                <span>{{ product.category }}</span>
+                                <small
+                                    v-if="isIllustrativeImage(product)"
+                                    class="shop-stock-note"
+                                    >Illustrative stock image</small
+                                >
+                                <h3>{{ product.title }}</h3>
+                                <p>{{ productTeaser(product, 72) }}</p>
+                                <strong
+                                    >Explore product <SokoIcon name="arrow"
+                                /></strong></div
+                        ></Link>
                     </div>
-                    <div>
-                        <span>03</span>
-                        <div>
-                            <h3>Open the conversation</h3>
-                            <p>Make your request available to suppliers.</p>
-                        </div>
-                        <SokoIcon name="globe" />
-                    </div>
-                </div>
-            </section>
-            <section
-                id="rfq"
-                class="rfq-section reveal-item"
-                aria-labelledby="rfq-title"
+                </section>
+            </div>
+            <div
+                v-else-if="sectionKey === 'sourcing'"
+                class="site-container storefront-sections shop-sections storefront-block"
+                :data-storefront-section="sectionKey"
             >
-                <div class="section-heading">
+                <section
+                    id="rfq"
+                    class="shop-sourcing-help"
+                    aria-labelledby="sourcing-title"
+                >
+                    <div class="shop-sourcing-icon">
+                        <SokoIcon name="search" :size="32" />
+                    </div>
                     <div>
-                        <p class="eyebrow">Opportunity goes both ways</p>
-                        <h2 id="rfq-title">What buyers are looking for.</h2>
+                        <h2 id="sourcing-title">
+                            Can’t find the right product?
+                        </h2>
                         <p>
-                            Real sourcing requests. A starting point for your
-                            next business connection.
+                            Request a specific item, quantity or specification
+                            from suppliers.
                         </p>
                     </div>
                     <button class="button button-outline" @click="openRfqModal">
-                        Post a request <SokoIcon name="arrow" />
-                    </button>
-                </div>
-                <div v-if="rfqs?.length" class="request-grid">
-                    <article
-                        v-for="request in rfqs"
-                        :key="request.id"
-                        class="request-card"
+                        Request a product <SokoIcon name="arrow" /></button
+                    ><Link
+                        href="/dashboard?section=rfqs"
+                        class="shop-supplier-link"
+                        >Supplier? View sourcing requests</Link
                     >
-                        <div class="request-card-top">
-                            <span
-                                ><SokoIcon
-                                    :name="
-                                        categoryIcons[request.category] ||
-                                        'document'
-                                    "
-                                />{{ request.category }}</span
-                            ><small>Buyer request</small>
-                        </div>
-                        <h3>{{ request.title }}</h3>
-                        <p class="request-reference">
-                            {{ request.rfq_number }}
-                        </p>
-                        <dl class="request-facts">
-                            <div>
-                                <dt>Quantity</dt>
-                                <dd>
-                                    {{ request.quantity.toLocaleString() }}
-                                    <small>units</small>
-                                </dd>
-                            </div>
-                            <div>
-                                <dt>Target per unit</dt>
-                                <dd>
-                                    {{
-                                        request.target_price
-                                            ? formatPrice(request.target_price)
-                                            : 'Not specified'
-                                    }}
-                                </dd>
-                            </div>
-                            <div class="request-destination">
-                                <dt>Destination</dt>
-                                <dd>{{ request.destination_country }}</dd>
-                            </div>
-                        </dl>
-                        <Link href="/dashboard" class="request-quote-link"
-                            >Submit a quote
-                            <span><SokoIcon name="arrow" /></span
-                        ></Link>
-                    </article>
-                </div>
-                <div v-else class="empty-state">
-                    <h3>No open sourcing requests</h3>
-                    <p>
-                        Create a request to share your requirements with
-                        suppliers.
-                    </p>
-                    <button class="button button-navy" @click="openRfqModal">
-                        Post a sourcing request
-                    </button>
-                </div>
-            </section>
-        </div>
+                </section>
+            </div>
+        </template>
 
         <SokoDialog
             :open="!!offerModalProduct"
@@ -948,18 +1049,63 @@
 </template>
 
 <script setup lang="ts">
-import { Head, Link, router, usePage } from '@inertiajs/vue3'
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { Link, router, usePage } from '@inertiajs/vue3'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { normalizeSectionOrder } from '@/design/sectionOrder'
+import type { ComponentPublicInstance } from 'vue'
+import { categoryRailState, categoryRailTarget } from '@/design/categoryRail'
 import {
     useCurrency,
     type Currency,
     type MarketRegion,
 } from '@/composables/useCurrency'
 import { useCatalogNavigation } from '@/composables/useCatalogNavigation'
-import { useStorefrontMotion } from '@/composables/useStorefrontMotion'
 import SokoIcon from '@/components/SokoIcon.vue'
+import SokoCommerceIllustration from '@/components/SokoCommerceIllustration.vue'
+import ProductCardFacts from '@/components/ProductCardFacts.vue'
+import { normalizeCardFooter } from '@/design/cardFacts'
 import SokoDialog from '@/components/SokoDialog.vue'
+import {
+    productTeaser,
+    productBadges,
+    carouselIndex,
+    swipeDirection,
+    productImage,
+    selectHeroProducts,
+    orderResolvedHero,
+    isIllustrativeImage,
+    hasPromotion as isActivePromotion,
+    savingsLabel,
+    campaignEnd,
+} from '@/design/merchandising'
 
+const promotionClock = ref(Date.now())
+const footerPaused = ref(false)
+const footerReducedMotion = ref(false)
+let footerMotionQuery: MediaQueryList | undefined
+const syncFooterMotion = () => {
+    footerReducedMotion.value = Boolean(footerMotionQuery?.matches)
+}
+onMounted(() => {
+    footerMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    syncFooterMotion()
+    footerMotionQuery.addEventListener('change', syncFooterMotion)
+})
+onBeforeUnmount(() =>
+    footerMotionQuery?.removeEventListener('change', syncFooterMotion)
+)
+
+let promotionTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+    promotionTimer = setInterval(() => {
+        promotionClock.value = Date.now()
+    }, 1000)
+})
+onBeforeUnmount(() => {
+    if (promotionTimer) clearInterval(promotionTimer)
+})
+const hasPromotion = (product: Record<string, any>) =>
+    isActivePromotion(product, promotionClock.value)
 const props = defineProps<{
     products: any[] | null
     categories: any[]
@@ -974,10 +1120,15 @@ const props = defineProps<{
     searchQuery: string
     stats: any
     storefrontContent?: Record<string, string>
+    merchandising?: Record<string, any>
 }>()
 const { activeCurrency, formatPrice } = useCurrency(props.currencies)
 const { visitCatalog, catalogHref } = useCatalogNavigation()
 const page = usePage()
+const footerSettings = computed(
+    () => (page.props.brandSettings || {}) as Record<string, any>
+)
+const footerConfig = computed(() => normalizeCardFooter(footerSettings.value))
 const sortOrder = computed(
     () =>
         new URL(page.url, 'http://soko.local').searchParams.get('sort') ||
@@ -986,156 +1137,217 @@ const sortOrder = computed(
 const productList = computed(() => {
     const products = [...(props.products || [])]
     if (sortOrder.value === 'price_asc')
-        products.sort((a, b) => a.price - b.price)
+        products.sort(
+            (a, b) =>
+                (hasPromotion(a)
+                    ? a.pricing.unit_price
+                    : (a.pricing?.original_unit_price ?? a.price)) -
+                (hasPromotion(b)
+                    ? b.pricing.unit_price
+                    : (b.pricing?.original_unit_price ?? b.price))
+        )
     else if (sortOrder.value === 'price_desc')
-        products.sort((a, b) => b.price - a.price)
+        products.sort(
+            (a, b) =>
+                (hasPromotion(b)
+                    ? b.pricing.unit_price
+                    : (b.pricing?.original_unit_price ?? b.price)) -
+                (hasPromotion(a)
+                    ? a.pricing.unit_price
+                    : (a.pricing?.original_unit_price ?? a.price))
+        )
     else if (sortOrder.value === 'title')
         products.sort((a, b) => a.title.localeCompare(b.title))
     return products
 })
 const storefrontElement = ref<HTMLElement | null>(null)
-const heroElement = ref<HTMLElement | null>(null)
-const activeStory = ref(0)
-const { motionEnabled } = useStorefrontMotion()
-const prefersReducedMotion = ref(false)
-const heroVisible = ref(true)
-const stories = [
-    {
-        id: 'source',
-        label: 'For a world of opportunity',
-        shortLabel: 'Source globally',
-        caption: 'Equipment & wholesale',
-        icon: 'globe',
-        image: '/public/images/sourcing-harbor.jpg',
-        headline: 'The world’s supply.',
-        accent: 'On your terms.',
-        description:
-            'From factory floors to your next frontier. Discover equipment, connect with suppliers and build a business without boundaries.',
-        format: 'all',
-        action: 'Explore the marketplace',
-    },
-    {
-        id: 'digital',
-        label: 'For the business you’re becoming',
-        shortLabel: 'Build digitally',
-        caption: 'Software & business assets',
-        icon: 'bolt',
-        image: '/public/images/soko-digital.jpg',
-        headline: 'Build what’s next.',
-        accent: 'Start here.',
-        description:
-            'The tools behind your next leap. Explore business software, licensed digital assets and solutions ready for your team.',
-        format: 'digital',
-        action: 'Explore digital products',
-    },
-    {
-        id: 'negotiate',
-        label: 'For a better kind of deal',
-        shortLabel: 'Make an offer',
-        caption: 'Negotiable equipment',
-        icon: 'factory',
-        image: '/public/images/soko-industry.jpg',
-        headline: 'Great equipment.',
-        accent: 'Better possibilities.',
-        description:
-            'A listing is a starting point. Discover equipment, review the details and make an offer that works for your business.',
-        format: 'make_offer',
-        action: 'Explore negotiable products',
-    },
-]
-const currentStory = computed(() => {
-    const story = stories[activeStory.value]
-    const c = props.storefrontContent
-    return activeStory.value === 0 && c
-        ? {
-              ...story,
-              headline: c.hero_heading ?? story.headline,
-              accent: c.hero_accent ?? story.accent,
-              description: c.hero_description ?? story.description,
-          }
-        : story
-})
-const featuredProduct = computed(() => {
-    if (activeStory.value === 1)
-        return productList.value.find((product) => product.format === 'digital')
-    if (activeStory.value === 2)
-        return productList.value.find((product) => product.accepts_offers)
-    return (
-        productList.value.find((product) => product.format === 'wholesale') ||
-        productList.value[0]
-    )
-})
-const sectors = [
-    {
-        title: 'Industry & machinery',
-        caption: 'Built to keep you moving',
-        icon: 'factory',
-        image: '/public/images/soko-industry.jpg',
-        query: { category: 'Industrial & Machinery', format: 'all' },
-    },
-    {
-        title: 'Digital & software',
-        caption: 'Tools for your next chapter',
-        icon: 'cloud',
-        image: '/public/images/soko-digital.jpg',
-        query: { category: 'all', format: 'digital' },
-    },
-    {
-        title: 'Agriculture & processing',
-        caption: 'Rooted in possibility',
-        icon: 'leaf',
-        image: '/public/images/soko-agriculture.jpg',
-        query: { category: 'Agriculture & Processing', format: 'all' },
-    },
-]
-let revealObserver: IntersectionObserver | undefined
-let heroObserver: IntersectionObserver | undefined
-let headerObserver: ResizeObserver | undefined
-let motionPreference: MediaQueryList | undefined
-const syncMotionPreference = () => {
-    prefersReducedMotion.value = motionPreference?.matches || false
+const categoryScroller = ref<HTMLElement | null>(null)
+const merchandising = computed(() => props.merchandising || {})
+const sectionOrder = computed(() =>
+    normalizeSectionOrder(merchandising.value.section_order)
+)
+function setCategoryScroller(
+    element: Element | ComponentPublicInstance | null
+) {
+    categoryScroller.value = element as HTMLElement | null
 }
+const categoryBoundary = ref({ previous: false, next: false, maximum: 0 })
+let categoryObserver: ResizeObserver | undefined
+function updateCategoryBoundary() {
+    const rail = categoryScroller.value
+    categoryBoundary.value = rail
+        ? categoryRailState(rail.scrollLeft, rail.scrollWidth, rail.clientWidth)
+        : { previous: false, next: false, maximum: 0 }
+}
+function scrollCategories(direction: number) {
+    const rail = categoryScroller.value
+    if (!rail) return
+    const target = categoryRailTarget(
+        direction < 0 ? 'ArrowLeft' : 'ArrowRight',
+        rail.scrollLeft,
+        rail.scrollWidth,
+        rail.clientWidth
+    )
+    rail.scrollTo({
+        left: target || 0,
+        behavior: footerReducedMotion.value ? 'auto' : 'smooth',
+    })
+}
+function onCategoryKeydown(event: KeyboardEvent) {
+    if (event.target !== event.currentTarget) return
+    const rail = categoryScroller.value
+    if (!rail) return
+    const target = categoryRailTarget(
+        event.key,
+        rail.scrollLeft,
+        rail.scrollWidth,
+        rail.clientWidth
+    )
+    if (target === null) return
+    event.preventDefault()
+    rail.scrollTo({
+        left: target,
+        behavior: footerReducedMotion.value ? 'auto' : 'smooth',
+    })
+}
+watch(categoryScroller, async (rail, _previous, onCleanup) => {
+    let active = true
+    onCleanup(() => {
+        active = false
+        categoryObserver?.disconnect()
+    })
+    categoryObserver?.disconnect()
+    await nextTick()
+    if (!active) return
+    if (rail && typeof ResizeObserver !== 'undefined') {
+        categoryObserver = new ResizeObserver(updateCategoryBoundary)
+        categoryObserver.observe(rail)
+    }
+    updateCategoryBoundary()
+})
+watch(
+    () => props.categories,
+    async () => {
+        await nextTick()
+        updateCategoryBoundary()
+    }
+)
 onMounted(() => {
-    motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
-    syncMotionPreference()
-    motionPreference.addEventListener('change', syncMotionPreference)
-    const header = document.querySelector('.site-header')
-    if (header && 'ResizeObserver' in window) {
-        headerObserver = new ResizeObserver(() => {
-            storefrontElement.value?.style.setProperty(
-                '--storefront-header-height',
-                `${header.getBoundingClientRect().height}px`
-            )
-        })
-        headerObserver.observe(header)
-    }
-    if ('IntersectionObserver' in window) {
-        revealObserver = new IntersectionObserver(
-            (entries) => {
-                for (const entry of entries)
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add('is-revealed')
-                        revealObserver?.unobserve(entry.target)
-                    }
-            },
-            { threshold: 0.08 }
-        )
-        storefrontElement.value?.classList.add('reveal-ready')
-        storefrontElement.value
-            ?.querySelectorAll('.reveal-item')
-            .forEach((element) => revealObserver?.observe(element))
-        heroObserver = new IntersectionObserver((entries) => {
-            heroVisible.value = entries[0]?.isIntersecting || false
-        })
-        if (heroElement.value) heroObserver.observe(heroElement.value)
-    }
+    window.addEventListener('resize', updateCategoryBoundary)
+    updateCategoryBoundary()
 })
 onBeforeUnmount(() => {
-    revealObserver?.disconnect()
-    heroObserver?.disconnect()
-    headerObserver?.disconnect()
-    motionPreference?.removeEventListener('change', syncMotionPreference)
+    categoryObserver?.disconnect()
+    window.removeEventListener('resize', updateCategoryBoundary)
 })
+const isCatalogFiltered = computed(
+    () =>
+        Boolean(props.searchQuery) ||
+        [
+            'activeType',
+            'activeCategory',
+            'activeFormat',
+            'activeCondition',
+            'activeRegion',
+        ].some(
+            (key) =>
+                !['all', 'global', '', undefined].includes((props as any)[key])
+        )
+)
+const missingImages = ref(new Set<string>())
+const heroProducts = computed(() => {
+    const placement = merchandising.value.hero
+    if (placement?.enabled === false) return []
+    if (placement?.products)
+        return orderResolvedHero(
+            placement.products,
+            placement.strategy || 'manual',
+            missingImages.value
+        )
+    return selectHeroProducts(
+        productList.value,
+        missingImages.value,
+        promotionClock.value
+    )
+})
+const showHero = computed(() => heroProducts.value.length > 0)
+const heroIndex = ref(0)
+function moveHero(delta: number) {
+    heroIndex.value = carouselIndex(
+        heroIndex.value,
+        delta,
+        heroProducts.value.length
+    )
+}
+function onHeroKeydown(event: KeyboardEvent) {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        if ((event.target as HTMLElement)?.closest('.shop-hero-slide'))
+            (event.currentTarget as HTMLElement).focus()
+        moveHero(event.key === 'ArrowRight' ? 1 : -1)
+    } else if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault()
+        heroIndex.value =
+            event.key === 'Home' ? 0 : heroProducts.value.length - 1
+    }
+}
+let touchStart: { x: number; y: number } | null = null
+let suppressClickUntil = 0
+function onHeroTouchStart(event: TouchEvent) {
+    touchStart =
+        event.touches.length === 1
+            ? { x: event.touches[0].clientX, y: event.touches[0].clientY }
+            : null
+}
+function onHeroTouchEnd(event: TouchEvent) {
+    if (!touchStart || !event.changedTouches.length) return
+    const delta = swipeDirection(
+        event.changedTouches[0].clientX - touchStart.x,
+        event.changedTouches[0].clientY - touchStart.y
+    )
+    touchStart = null
+    if (delta && heroProducts.value.length > 1) {
+        if (event.cancelable) event.preventDefault()
+        suppressClickUntil = Date.now() + 400
+        moveHero(delta)
+    }
+}
+function onHeroClick(event: MouseEvent) {
+    if (Date.now() < suppressClickUntil) {
+        event.preventDefault()
+        event.stopPropagation()
+    }
+}
+
+watch(heroProducts, () => {
+    if (heroIndex.value >= heroProducts.value.length) heroIndex.value = 0
+})
+const heroProduct = computed(() => heroProducts.value[heroIndex.value])
+const sideProducts = computed(() =>
+    merchandising.value.hero_side?.enabled === false
+        ? []
+        : merchandising.value.hero_side?.products ||
+          productList.value
+              .filter(
+                  (product) =>
+                      !heroProducts.value.some(
+                          (hero: any) => hero.id === product.id
+                      )
+              )
+              .slice(0, 2)
+)
+const digitalProducts = computed(() =>
+    merchandising.value.discovery?.enabled === false
+        ? []
+        : merchandising.value.discovery?.products ||
+          productList.value
+              .filter(
+                  (product) =>
+                      product.type !== 'physical' ||
+                      product.format === 'digital'
+              )
+              .slice(0, 3)
+)
 
 const filterRegion = ref(props.activeRegion || 'global')
 watch(
@@ -1145,7 +1357,6 @@ watch(
     }
 )
 const filtersOpen = ref(false)
-const missingImages = ref(new Set<string>())
 const formats = [
     { id: 'all', label: 'All products' },
     { id: 'wholesale', label: 'Wholesale' },
@@ -1167,6 +1378,14 @@ const categoryIcons: Record<string, string> = {
     'Agriculture & Processing': 'leaf',
     'Energy & Utilities': 'bolt',
 }
+const categoryScenes: Record<string, string> = {
+    'Industrial & Machinery': 'warehouse',
+    'Electronics & Telecom': 'analytics',
+    'Digital Software': 'digital',
+    'Digital Assets': 'customization',
+    'Agriculture & Processing': 'agriculture',
+    'Energy & Utilities': 'energy',
+}
 const formatLabels: Record<string, string> = {
     wholesale: 'WHOLESALE',
     retail: 'READY TO BUY',
@@ -1179,7 +1398,7 @@ const setCategory = (category: string) => visitCatalog({ category })
 const setCondition = (condition: string) => visitCatalog({ condition })
 const onFilterRegionChange = () => visitCatalog({ region: filterRegion.value })
 const resetFilters = () =>
-    router.get('/', {}, { preserveState: false, preserveScroll: true })
+    router.get('/', {}, { preserveState: false, preserveScroll: false })
 
 const offerModalProduct = ref<any | null>(null)
 const offerPrice = ref(0)

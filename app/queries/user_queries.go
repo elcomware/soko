@@ -20,6 +20,7 @@ func (q *UserQueries) FindByID(id string) (*models.User, error) {
 	if user.ID == "" {
 		return nil, errors.New("user not found")
 	}
+	HydrateAccess(&user)
 	return &user, nil
 }
 
@@ -31,6 +32,7 @@ func (q *UserQueries) FindByEmail(email string) (*models.User, error) {
 	if user.ID == "" {
 		return nil, errors.New("user not found")
 	}
+	HydrateAccess(&user)
 	return &user, nil
 }
 

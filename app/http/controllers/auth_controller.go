@@ -85,7 +85,7 @@ func (a *AuthController) Login(ctx http.Context) http.Response {
 	ctx.Request().Session().Put("user_role", string(user.Role))
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Welcome back, %s!", user.Name))
 
-	if user.Role == models.RoleAdmin || user.Role == models.RoleMerchant {
+	if user.CanAccessWorkspace() {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
 	return ctx.Response().Redirect(http.StatusFound, "/account")
@@ -152,7 +152,7 @@ func (a *AuthController) Register(ctx http.Context) http.Response {
 	ctx.Request().Session().Put("user_role", string(created.Role))
 	ctx.Request().Session().Flash("success", fmt.Sprintf("Enterprise account created! Welcome to Soko, %s.", created.Name))
 
-	if created.Role == models.RoleMerchant || created.Role == models.RoleAdmin {
+	if created.CanAccessWorkspace() {
 		return ctx.Response().Redirect(http.StatusFound, "/dashboard")
 	}
 	return ctx.Response().Redirect(http.StatusFound, "/account")

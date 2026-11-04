@@ -1,42 +1,5 @@
 <template>
     <div class="workspace site-container">
-        <aside class="workspace-sidebar">
-            <div class="workspace-identity">
-                <span class="workspace-avatar">{{ initials }}</span>
-                <strong>{{
-                    currentUser.company_name || currentUser.name
-                }}</strong>
-                <span>{{
-                    isAdmin ? 'Platform administration' : 'Supplier workspace'
-                }}</span>
-            </div>
-            <nav aria-label="Workspace" class="workspace-nav">
-                <Link
-                    v-for="item in navigation"
-                    :key="item.id"
-                    :href="sectionHref(item.id)"
-                    :aria-current="section === item.id ? 'page' : undefined"
-                    :class="{ 'is-current': section === item.id }"
-                    preserve-state
-                    preserve-scroll
-                >
-                    <SokoIcon :name="item.icon" /><span>{{ item.label }}</span
-                    ><small v-if="item.count !== undefined">{{
-                        item.count
-                    }}</small>
-                </Link>
-            </nav>
-            <div class="workspace-nav workspace-secondary">
-                <Link href="/account"><SokoIcon name="user" />My account</Link
-                ><Link href="/"
-                    ><SokoIcon name="globe" />Open marketplace<SokoIcon
-                        name="arrow"
-                /></Link>
-            </div>
-            <p class="workspace-sidebar-note">
-                Your products, conversations and orders, in one place.
-            </p>
-        </aside>
         <div class="workspace-content">
             <header class="workspace-heading">
                 <div>
@@ -52,7 +15,7 @@
                 </div>
                 <button
                     v-if="
-                        canManageCatalog &&
+                        capabilities?.createProducts &&
                         ['overview', 'products'].includes(section)
                     "
                     class="button button-navy"
@@ -61,9 +24,6 @@
                     <SokoIcon name="box" />Create listing
                 </button>
             </header>
-            <p v-if="localNotice" role="status" class="workspace-feedback">
-                {{ localNotice }}
-            </p>
             <p v-if="pageError" role="alert" class="form-error">
                 {{ pageError }}
             </p>
@@ -175,81 +135,18 @@
             </template>
 
             <section
-                v-else-if="section === 'content' && isAdmin"
+                v-else-if="section === 'content' && capabilities?.manageContent"
                 class="workspace-panel workspace-content-editor"
             >
-                <h2>Marketplace copy</h2>
+                <h2>Storefront content and product selection</h2>
                 <p>
-                    Changes appear on the public storefront after you save. Keep
-                    the copy specific, useful and free of unsupported
-                    guarantees.
+                    Control the announcement, section titles, category
+                    navigation, main product showcase, side cards and digital
+                    discovery from the versioned storefront editor.
                 </p>
-                <form
-                    class="soko-form workspace-form"
-                    novalidate
-                    @submit.prevent="saveContent"
+                <Link href="/dashboard/merchandising" class="button button-navy"
+                    >Open storefront editor</Link
                 >
-                    <p
-                        v-if="contentError"
-                        id="content-error"
-                        role="alert"
-                        class="form-error"
-                    >
-                        {{ contentError }}
-                    </p>
-                    <div
-                        v-for="field in contentFields"
-                        :key="field.key"
-                        class="soko-field"
-                    >
-                        <label :for="`content-${field.key}`">{{
-                            field.label
-                        }}</label
-                        ><textarea
-                            class="resize-none"
-                            v-if="field.multiline"
-                            :id="`content-${field.key}`"
-                            v-model="contentForm[field.key]"
-                            :name="field.key"
-                            :maxlength="field.max"
-                            rows="4"
-                            :aria-invalid="invalidFields.includes(field.key)"
-                            :aria-describedby="
-                                contentError ? 'content-error' : undefined
-                            "
-                        /><input
-                            v-else
-                            :id="`content-${field.key}`"
-                            v-model="contentForm[field.key]"
-                            :name="field.key"
-                            :required="field.key !== 'announcement'"
-                            :maxlength="field.max"
-                            :aria-invalid="invalidFields.includes(field.key)"
-                            :aria-describedby="
-                                contentError ? 'content-error' : undefined
-                            "
-                        />
-                        <p class="form-note">
-                            {{ contentForm[field.key].length }} /
-                            {{ field.max }} characters
-                        </p>
-                    </div>
-                    <div class="workspace-form-actions">
-                        <Link href="/" class="button button-outline"
-                            >Preview storefront</Link
-                        ><button
-                            type="submit"
-                            class="button button-navy"
-                            :disabled="busy"
-                        >
-                            {{
-                                busy
-                                    ? 'Saving content…'
-                                    : 'Save storefront content'
-                            }}
-                        </button>
-                    </div>
-                </form>
             </section>
             <template v-else>
                 <div class="workspace-toolbar">
@@ -295,189 +192,178 @@
                     >
                         Clear search</button
                     ><button
-                        v-else-if="section === 'products' && canManageCatalog"
+                        v-else-if="
+                            section === 'products' &&
+                            capabilities?.createProducts
+                        "
                         class="button button-navy"
                         @click="openProduct()"
                     >
                         Create your first listing
                     </button>
                 </div>
-                <div
+                <AdminTable
                     v-else-if="section === 'products'"
-                    class="workspace-panel workspace-table-frame"
-                >
-                    <table class="workspace-table">
-                        <caption class="sr-only">
-                            Product catalog
-                        </caption>
-                        <thead>
-                            <tr>
-                                <th scope="col">Product</th>
-                                <th scope="col">Price</th>
-                                <th scope="col">Inventory</th>
-                                <th scope="col">Market</th>
-                                <th scope="col">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="product in visibleRecords"
-                                :key="product.id"
-                            >
-                                <td>
-                                    <div class="workspace-product">
-                                        <img
-                                            v-if="product.image_url"
-                                            :src="product.image_url"
-                                            alt=""
-                                            loading="lazy"
-                                            @error="hideBrokenImage"
-                                        /><span
-                                            v-else
-                                            class="workspace-product-placeholder"
-                                            ><SokoIcon name="box"
-                                        /></span>
-                                        <div>
-                                            <Link
-                                                :href="`/products/${product.id}`"
-                                                ><strong>{{
-                                                    product.title
-                                                }}</strong></Link
-                                            ><small
-                                                >{{ product.sku || 'No SKU' }} ·
-                                                {{ humanize(product.format) }} ·
-                                                {{
-                                                    humanize(product.condition)
-                                                }}</small
-                                            ><small v-if="isAdmin">{{
-                                                product.vendor_name
-                                            }}</small>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <strong>{{
-                                        formatPrice(product.price)
-                                    }}</strong
-                                    ><small v-if="product.wholesale_price > 0"
-                                        >Bulk
-                                        {{
-                                            formatPrice(product.wholesale_price)
-                                        }}</small
-                                    >
-                                </td>
-                                <td>
-                                    <strong>{{
-                                        product.stock < 0
-                                            ? 'Unlimited'
-                                            : `${product.stock} in stock`
-                                    }}</strong
+                    caption="Product catalog"
+                    :busy="busy"
+                    class="workspace-admin-list"
+                    ><template #header>
+                        <tr>
+                            <th scope="col">Product</th>
+                            <th scope="col">Price</th>
+                            <th scope="col">Inventory</th>
+                            <th scope="col">Market</th>
+                            <th scope="col">Actions</th>
+                        </tr>
+                    </template>
+                    <tr v-for="product in visibleRecords" :key="product.id">
+                        <th scope="row">
+                            <div class="workspace-product">
+                                <img
+                                    v-if="product.image_url"
+                                    :src="product.image_url"
+                                    alt=""
+                                    loading="lazy"
+                                    @error="hideBrokenImage"
+                                /><span
+                                    v-else
+                                    class="workspace-product-placeholder"
+                                    ><SokoIcon name="box"
+                                /></span>
+                                <div>
+                                    <Link :href="`/products/${product.id}`"
+                                        ><strong>{{
+                                            product.title
+                                        }}</strong></Link
                                     ><small
-                                        >Minimum {{ product.moq }} units</small
-                                    >
-                                </td>
-                                <td>
-                                    {{
-                                        humanize(
-                                            product.vendor_region || 'global'
-                                        )
-                                    }}<small>{{
-                                        product.vendor_country
+                                        >{{ product.sku || 'No SKU' }} ·
+                                        {{ humanize(product.format) }} ·
+                                        {{ humanize(product.condition) }}</small
+                                    ><small v-if="isAdmin">{{
+                                        product.vendor_name
                                     }}</small>
-                                </td>
-                                <td>
-                                    <div class="workspace-row-actions">
-                                        <Link
-                                            :href="`/products/${product.id}`"
-                                            class="workspace-action"
-                                            >View</Link
-                                        ><button
-                                            v-if="canManageCatalog"
-                                            class="workspace-action"
-                                            @click="openProduct(product)"
-                                        >
-                                            Edit<span class="sr-only">
-                                                {{ product.title }}</span
-                                            ></button
-                                        ><button
-                                            v-if="canManageCatalog"
-                                            class="workspace-action is-danger"
-                                            @click="openDelete(product)"
-                                        >
-                                            Delete<span class="sr-only">
-                                                {{ product.title }}</span
-                                            >
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div v-else-if="section === 'orders'" class="workspace-records">
-                    <article
-                        v-for="order in visibleRecords"
-                        :key="order.id"
-                        class="workspace-panel workspace-order"
-                    >
-                        <header>
-                            <div>
-                                <h2>{{ order.order_number }}</h2>
-                                <p>
-                                    {{ dateLabel(order.created_at) }} ·
-                                    {{ order.customer_name || 'Buyer' }}
-                                </p>
+                                </div>
                             </div>
+                        </th>
+                        <td>
+                            <strong>{{ formatPrice(product.price) }}</strong
+                            ><small v-if="product.wholesale_price > 0"
+                                >Bulk
+                                {{
+                                    formatPrice(product.wholesale_price)
+                                }}</small
+                            >
+                        </td>
+                        <td>
+                            <strong>{{
+                                product.stock < 0
+                                    ? 'Unlimited'
+                                    : `${product.stock} in stock`
+                            }}</strong
+                            ><small>Minimum {{ product.moq }} units</small>
+                        </td>
+                        <td>
+                            {{ humanize(product.vendor_region || 'global')
+                            }}<small>{{ product.vendor_country }}</small>
+                        </td>
+                        <td>
+                            <div class="workspace-row-actions">
+                                <Link
+                                    :href="`/products/${product.id}`"
+                                    class="admin-view-link"
+                                    :aria-label="`View ${product.title} on storefront`"
+                                    >View</Link
+                                >
+                                <AdminActionMenu
+                                    :label="`Actions for ${product.title}`"
+                                    :items="productActions(product)"
+                                    :disabled="busy"
+                                    @select="(id) => productAction(product, id)"
+                                />
+                            </div>
+                        </td>
+                    </tr>
+                </AdminTable>
+                <AdminTable
+                    v-else-if="section === 'orders'"
+                    caption="Orders received"
+                    class="workspace-admin-list"
+                >
+                    <template #header
+                        ><tr>
+                            <th scope="col">Order</th>
+                            <th scope="col">Buyer</th>
+                            <th scope="col">Items and payment</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Total</th>
+                        </tr></template
+                    >
+                    <tr v-for="order in visibleRecords" :key="order.id">
+                        <th scope="row">
+                            <strong>{{ order.order_number }}</strong
+                            ><small>{{ dateLabel(order.created_at) }}</small>
+                        </th>
+                        <td>
+                            <strong>{{ order.customer_name || 'Buyer' }}</strong
+                            ><small v-if="order.customer_email">{{
+                                order.customer_email
+                            }}</small>
+                        </td>
+                        <td>
+                            <details class="admin-order-details">
+                                <summary
+                                    :aria-label="`View items and payment for ${order.order_number}`"
+                                >
+                                    {{ (order.items || []).length }} line items
+                                    · Details
+                                </summary>
+                                <ul>
+                                    <li
+                                        v-for="item in order.items || []"
+                                        :key="item.id || item.product_id"
+                                    >
+                                        <strong>{{ item.product_title }}</strong
+                                        ><small
+                                            >{{ item.quantity }} ×
+                                            {{ formatPrice(item.unit_price) }} ·
+                                            {{
+                                                formatPrice(item.total_price)
+                                            }}</small
+                                        >
+                                        <p
+                                            v-if="
+                                                item.product_type &&
+                                                item.product_type !== 'physical'
+                                            "
+                                        >
+                                            Digital fulfillment is arranged
+                                            separately with the supplier.
+                                        </p>
+                                    </li>
+                                </ul>
+                                <p>
+                                    {{
+                                        order.payment_method
+                                            ? humanize(order.payment_method)
+                                            : 'Payment method not recorded'
+                                    }}
+                                </p>
+                            </details>
+                        </td>
+                        <td>
                             <span
                                 class="workspace-status"
                                 :data-status="order.status"
                                 >{{ humanize(order.status) }}</span
                             >
-                        </header>
-                        <ul class="workspace-order-items">
-                            <li
-                                v-for="item in order.items || []"
-                                :key="item.id || item.product_id"
-                            >
-                                <span
-                                    ><strong>{{ item.product_title }}</strong
-                                    ><small
-                                        >{{ item.quantity }} ×
-                                        {{
-                                            formatPrice(item.unit_price)
-                                        }}</small
-                                    ></span
-                                ><strong>{{
-                                    formatPrice(item.total_price)
-                                }}</strong>
-                                <p
-                                    v-if="
-                                        item.product_type &&
-                                        item.product_type !== 'physical'
-                                    "
-                                    class="workspace-fulfillment-note"
-                                >
-                                    Digital fulfillment is arranged separately
-                                    with the supplier.
-                                </p>
-                            </li>
-                        </ul>
-                        <footer>
-                            <span
-                                >{{
-                                    order.payment_method
-                                        ? humanize(order.payment_method)
-                                        : 'Payment method not recorded'
-                                }}<small v-if="order.customer_email">{{
-                                    order.customer_email
-                                }}</small></span
-                            ><strong
-                                >Total
-                                {{ formatPrice(order.total_amount) }}</strong
-                            >
-                        </footer>
-                    </article>
-                </div>
+                        </td>
+                        <td>
+                            <strong>{{
+                                formatPrice(order.total_amount)
+                            }}</strong>
+                        </td>
+                    </tr>
+                </AdminTable>
                 <div v-else-if="section === 'rfqs'" class="workspace-records">
                     <article
                         v-for="rfq in visibleRecords"
@@ -535,7 +421,7 @@
                         <footer>
                             <span>{{ rfq.category }}</span
                             ><button
-                                v-if="canQuote && rfq.status === 'open'"
+                                v-if="recordCan('rfqs', rfq.id, 'quote')"
                                 class="button button-navy"
                                 @click="openQuote(rfq)"
                             >
@@ -606,9 +492,7 @@
                         <p v-if="offer.message" class="workspace-offer-message">
                             “{{ offer.message }}”
                         </p>
-                        <footer
-                            v-if="canReviewOffers && offer.status === 'pending'"
-                        >
+                        <footer v-if="recordCan('offers', offer.id, 'decide')">
                             <span>Choose how to respond to this proposal.</span>
                             <div class="workspace-row-actions">
                                 <button
@@ -636,53 +520,43 @@
                         </footer>
                     </article>
                 </div>
-                <div
+                <AdminTable
                     v-else-if="section === 'users'"
-                    class="workspace-panel workspace-table-frame"
-                >
-                    <table class="workspace-table">
-                        <caption class="sr-only">
-                            Marketplace users
-                        </caption>
-                        <thead>
-                            <tr>
-                                <th scope="col">User</th>
-                                <th scope="col">Role</th>
-                                <th scope="col">Company</th>
-                                <th scope="col">Country</th>
-                                <th scope="col">Verification</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="user in visibleRecords" :key="user.id">
-                                <td>
-                                    <strong>{{ user.name }}</strong
-                                    ><small>{{ user.email }}</small>
-                                </td>
-                                <td>{{ humanize(user.role) }}</td>
-                                <td>
-                                    {{ user.company_name || 'Not provided' }}
-                                </td>
-                                <td>{{ user.country || 'Not provided' }}</td>
-                                <td>
-                                    <span
-                                        class="workspace-status"
-                                        :data-status="
-                                            user.verified
-                                                ? 'completed'
-                                                : 'pending'
-                                        "
-                                        >{{
-                                            user.verified
-                                                ? 'Verified'
-                                                : 'Unverified'
-                                        }}</span
-                                    >
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                    caption="Marketplace users"
+                    :busy="busy"
+                    class="workspace-admin-list"
+                    ><template #header>
+                        <tr>
+                            <th scope="col">User</th>
+                            <th scope="col">Role</th>
+                            <th scope="col">Company</th>
+                            <th scope="col">Country</th>
+                            <th scope="col">Verification</th>
+                        </tr>
+                    </template>
+                    <tr v-for="user in visibleRecords" :key="user.id">
+                        <th scope="row">
+                            <strong>{{ user.name }}</strong
+                            ><small>{{ user.email }}</small>
+                        </th>
+                        <td>{{ humanize(user.role) }}</td>
+                        <td>
+                            {{ user.company_name || 'Not provided' }}
+                        </td>
+                        <td>{{ user.country || 'Not provided' }}</td>
+                        <td>
+                            <span
+                                class="workspace-status"
+                                :data-status="
+                                    user.verified ? 'completed' : 'pending'
+                                "
+                                >{{
+                                    user.verified ? 'Verified' : 'Unverified'
+                                }}</span
+                            >
+                        </td>
+                    </tr>
+                </AdminTable>
             </template>
         </div>
 
@@ -1000,18 +874,37 @@
                     </div>
                 </div>
                 <div class="soko-field">
-                    <label for="product-image"
-                        >Product image URL <span>(optional)</span></label
-                    ><input
-                        id="product-image"
-                        v-model="productForm.image_url"
-                        type="url"
-                        name="image_url"
-                        placeholder="https://…"
-                        :aria-invalid="invalidFields.includes('image_url')"
-                        aria-describedby="product-errors"
+                    <label for="product-value"
+                        >What this product helps the buyer achieve</label
+                    >
+                    <textarea
+                        id="product-value"
+                        v-model="productForm.short_desc"
+                        maxlength="300"
+                        rows="2"
+                        placeholder="Describe the useful outcome, without unsupported claims."
                     />
+                    <p class="form-note">
+                        A concise value proposition for product discovery. Up to
+                        300 characters.
+                    </p>
                 </div>
+                <ProductMediaStudio
+                    v-if="
+                        editingProduct
+                            ? recordCan('products', editingProduct.id, 'media')
+                            : capabilities?.createMedia
+                    "
+                    v-model="productForm.image_url"
+                    v-model:gallery="productForm.gallery_urls"
+                    :title="productForm.title"
+                />
+                <label class="workspace-checkbox"
+                    ><input
+                        type="checkbox"
+                        v-model="productForm.featured"
+                    />Feature this listing in discovery</label
+                >
                 <div class="soko-field">
                     <label for="product-description"
                         >Description and specifications</label
@@ -1237,7 +1130,10 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Link, router, usePage } from '@inertiajs/vue3'
 import SokoDialog from '@/components/SokoDialog.vue'
+import AdminTable from '@/components/AdminTable.vue'
+import AdminActionMenu from '@/components/AdminActionMenu.vue'
 import SokoIcon from '@/components/SokoIcon.vue'
+import ProductMediaStudio from '@/components/ProductMediaStudio.vue'
 import {
     useCurrency,
     type Currency,
@@ -1247,6 +1143,7 @@ import '../../../css/workspace.css'
 
 type RecordData = Record<string, any>
 const props = defineProps<{
+    recordCapabilities?: Record<string, Record<string, Record<string, boolean>>>
     currentUser: RecordData
     stats: Record<string, number>
     products?: RecordData[] | null
@@ -1259,30 +1156,48 @@ const props = defineProps<{
     storefrontContent?: Record<string, string>
     capabilities?: {
         manageCatalog?: boolean
+        createMedia?: boolean
+        createProducts?: boolean
+        editProducts?: boolean
+        deleteProducts?: boolean
+        readProducts?: boolean
+        readOrders?: boolean
+        readOffers?: boolean
+        readRfqs?: boolean
+        manageContent?: boolean
+        manageSettings?: boolean
+        managePromotions?: boolean
         manageUsers?: boolean
         reviewOffers?: boolean
         quoteRfqs?: boolean
     }
 }>()
+const recordCan = (kind: string, id: string, action: string) =>
+    props.recordCapabilities?.[kind]?.[id]?.[action] === true
+const productActions = (product: RecordData) => [
+    ...(recordCan('products', product.id, 'update')
+        ? [{ id: 'edit', label: 'Edit product' }]
+        : []),
+    ...(recordCan('products', product.id, 'delete')
+        ? [{ id: 'delete', label: 'Delete product', danger: true }]
+        : []),
+]
+function productAction(product: RecordData, action: string) {
+    if (busy.value) return
+    if (action === 'edit') openProduct(product)
+    else if (action === 'delete') openDelete(product)
+}
 const page = usePage()
 const { formatPrice } = useCurrency(props.currencies)
 const isAdmin = computed(() => props.currentUser.role === 'admin')
 const canManageCatalog = computed(
-    () =>
-        props.capabilities?.manageCatalog ??
-        ['admin', 'merchant'].includes(props.currentUser.role)
+    () => props.capabilities?.manageCatalog === true
 )
 const canReviewOffers = computed(
-    () =>
-        props.capabilities?.reviewOffers ??
-        ['admin', 'merchant'].includes(props.currentUser.role)
+    () => props.capabilities?.reviewOffers === true
 )
-const canQuote = computed(
-    () => props.capabilities?.quoteRfqs ?? props.currentUser.role === 'merchant'
-)
-const canManageUsers = computed(
-    () => props.capabilities?.manageUsers ?? isAdmin.value
-)
+const canQuote = computed(() => props.capabilities?.quoteRfqs === true)
+const canManageUsers = computed(() => props.capabilities?.manageUsers === true)
 const productList = computed(() => props.products || [])
 const orderList = computed(() => props.orders || [])
 const rfqList = computed(() => props.rfqs || [])
@@ -1300,7 +1215,7 @@ const initials = computed(() =>
 )
 const navigation = computed(() => [
     { id: 'overview', label: 'Overview', icon: 'layers' },
-    ...(canManageCatalog.value
+    ...(props.capabilities?.readProducts
         ? [
               {
                   id: 'products',
@@ -1310,24 +1225,36 @@ const navigation = computed(() => [
               },
           ]
         : []),
-    {
-        id: 'orders',
-        label: 'Orders',
-        icon: 'document',
-        count: orderList.value.length,
-    },
-    {
-        id: 'rfqs',
-        label: 'Sourcing requests',
-        icon: 'globe',
-        count: rfqList.value.length,
-    },
-    {
-        id: 'offers',
-        label: 'Buyer offers',
-        icon: 'document',
-        count: offerList.value.length,
-    },
+    ...(props.capabilities?.readOrders
+        ? [
+              {
+                  id: 'orders',
+                  label: 'Orders',
+                  icon: 'document',
+                  count: orderList.value.length,
+              },
+          ]
+        : []),
+    ...(props.capabilities?.readRfqs
+        ? [
+              {
+                  id: 'rfqs',
+                  label: 'Sourcing requests',
+                  icon: 'globe',
+                  count: rfqList.value.length,
+              },
+          ]
+        : []),
+    ...(props.capabilities?.readOffers
+        ? [
+              {
+                  id: 'offers',
+                  label: 'Buyer offers',
+                  icon: 'document',
+                  count: offerList.value.length,
+              },
+          ]
+        : []),
     ...(canManageUsers.value
         ? [
               {
@@ -1336,8 +1263,10 @@ const navigation = computed(() => [
                   icon: 'user',
                   count: (props.users || []).length,
               },
-              { id: 'content', label: 'Storefront content', icon: 'document' },
           ]
+        : []),
+    ...(props.capabilities?.manageContent
+        ? [{ id: 'content', label: 'Storefront content', icon: 'document' }]
         : []),
 ])
 const section = computed(() => {
@@ -1568,6 +1497,9 @@ const emptyProduct = () => ({
     sku: '',
     description: '',
     image_url: '',
+    short_desc: '',
+    gallery_urls: [] as string[],
+    featured: false,
     digital_license_format: '',
     digital_file_size: '',
     digital_download_url: '',
@@ -1596,6 +1528,12 @@ const marketRegions = computed(() =>
           ]
 )
 const openProduct = (product?: RecordData) => {
+    if (
+        product
+            ? !recordCan('products', product.id, 'update')
+            : !props.capabilities?.createProducts
+    )
+        return
     editingProduct.value = product || null
     Object.assign(productForm, emptyProduct())
     if (product) {
@@ -1604,6 +1542,7 @@ const openProduct = (product?: RecordData) => {
                 (productForm as RecordData)[key] = product[key]
         productForm.region = product.vendor_region || 'global'
         productForm.version = String(product.updated_at || '')
+        productForm.gallery_urls = [...(product.gallery_urls || [])]
         productForm.price_tiers = (product.price_tiers || []).map(
             (tier: { min_qty: number; max_qty: number; price: number }) => ({
                 ...tier,
@@ -1696,6 +1635,7 @@ const saveProduct = (event: Event) => {
 }
 const deleteTarget = ref<RecordData | null>(null)
 const openDelete = (product: RecordData) => {
+    if (!recordCan('products', product.id, 'delete')) return
     deleteTarget.value = product
     formError.value = ''
 }
@@ -1722,6 +1662,7 @@ const ownQuote = (rfq: RecordData) =>
         (quote: RecordData) => quote.vendor_id === props.currentUser.id
     )
 const openQuote = (rfq: RecordData) => {
+    if (!recordCan('rfqs', rfq.id, 'quote')) return
     quoteTarget.value = rfq
     const quote = ownQuote(rfq)
     Object.assign(quoteForm, {
@@ -1748,7 +1689,8 @@ const saveQuote = (event: Event) => {
         true
     )
 }
-const decideOffer = (offer: RecordData, status: 'accepted' | 'declined') =>
+const decideOffer = (offer: RecordData, status: 'accepted' | 'declined') => {
+    if (!recordCan('offers', offer.id, 'decide')) return
     mutate(
         `/dashboard/offers/${offer.id}/decision?section=offers`,
         { status },
@@ -1758,6 +1700,7 @@ const decideOffer = (offer: RecordData, status: 'accepted' | 'declined') =>
                 status === 'accepted' ? 'Offer accepted.' : 'Offer declined.'
         }
     )
+}
 const contentFields = [
     { key: 'hero_heading', label: 'Hero heading', max: 120 },
     { key: 'hero_accent', label: 'Hero accent line', max: 120 },
@@ -1801,3 +1744,55 @@ const saveContent = (event: Event) => {
     )
 }
 </script>
+
+<style scoped>
+.workspace-admin-list .workspace-status {
+    font-size: 0.8125rem;
+}
+.workspace-admin-list small {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--soko-muted);
+    line-height: 1.5;
+    margin-top: 0.25rem;
+}
+.workspace-admin-list .workspace-product {
+    min-width: 0;
+}
+.workspace-admin-list .workspace-product strong {
+    min-width: 0;
+}
+.admin-view-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--soko-line);
+    border-radius: var(--soko-radius);
+    font-size: 0.8125rem;
+    font-weight: 650;
+}
+.admin-view-link:hover {
+    background: var(--soko-canvas);
+}
+.admin-order-details summary {
+    min-height: 44px;
+    padding: 0.7rem 0;
+    cursor: pointer;
+    font-weight: 650;
+}
+.admin-order-details ul {
+    margin: 0.5rem 0;
+    padding-left: 1rem;
+}
+.admin-order-details li {
+    margin-bottom: 0.75rem;
+}
+.admin-order-details p {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--soko-muted);
+}
+</style>
